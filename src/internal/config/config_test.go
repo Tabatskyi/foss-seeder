@@ -16,8 +16,8 @@ func TestConfigSaveAndLoad(t *testing.T) {
 		t.Logf("Port loaded: %s", cfg.Port)
 	}
 
-	if len(cfg.Rules) == 0 {
-		t.Fatalf("expected default rules to be populated, got 0")
+	if len(cfg.Rules) != 0 {
+		t.Fatalf("expected 0 initial rules, got %d", len(cfg.Rules))
 	}
 
 	// Add a rule

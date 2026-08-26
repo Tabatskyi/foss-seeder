@@ -34,65 +34,6 @@ type Config struct {
 	ConfigFilePath       string                `json:"-"`
 }
 
-var DefaultRules = map[string]TargetRule{
-	"archlinux": {
-		Key:        "archlinux",
-		Name:       "Arch Linux",
-		TitleRegex: `ArchLinux .*`,
-		Enabled:    true,
-		AutoPurge:  true,
-	},
-	"cachyos-desktop": {
-		Key:        "cachyos-desktop",
-		Name:       "CachyOS Desktop (x86_64)",
-		TitleRegex: `Cachy OS .* - Desktop \(x86_64\)`,
-		Enabled:    true,
-		AutoPurge:  true,
-	},
-	"debian-netinst": {
-		Key:        "debian-netinst",
-		Name:       "Debian Netinst (amd64)",
-		TitleRegex: `Debian .* - Netinst \(amd64\)`,
-		Enabled:    true,
-		AutoPurge:  true,
-	},
-	"kali-installer": {
-		Key:        "kali-installer",
-		Name:       "Kali Linux Installer (amd64)",
-		TitleRegex: `Kali Linux .* - Installer \(amd64\) \(amd64\)`,
-		Enabled:    true,
-		AutoPurge:  true,
-	},
-	"centos-10": {
-		Key:        "centos-10",
-		Name:       "CentOS Stream 10 (x86_64)",
-		TitleRegex: `CentOS 10-.* \(x86_64\) \(x86_64\)`,
-		Enabled:    true,
-		AutoPurge:  true,
-	},
-	"ubuntu-desktop": {
-		Key:        "ubuntu-desktop",
-		Name:       "Ubuntu Desktop (amd64)",
-		TitleRegex: `Ubuntu .* Desktop \(amd64\)`,
-		Enabled:    false,
-		AutoPurge:  true,
-	},
-	"fedora-workstation": {
-		Key:        "fedora-workstation",
-		Name:       "Fedora Workstation (x86_64)",
-		TitleRegex: `Fedora Workstation .* \(x86_64\)`,
-		Enabled:    false,
-		AutoPurge:  true,
-	},
-	"alpine-standard": {
-		Key:        "alpine-standard",
-		Name:       "Alpine Linux Standard (x86_64)",
-		TitleRegex: `Alpine Linux .* - Standard \(x86_64\)`,
-		Enabled:    false,
-		AutoPurge:  true,
-	},
-}
-
 func getEnv(key, defaultVal string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
@@ -136,7 +77,7 @@ func LoadConfig() *Config {
 	cfg := &Config{
 		Port:                 getEnv("PORT", "7474"),
 		FeedURL:              getEnv("FEED_URL", "https://fosstorrents.com/feed/torrents.xml"),
-		QbitHost:             getEnv("QBIT_HOST", "http://localhost:8080"),
+		QbitHost:             getEnv("QBIT_HOST", "http://127.0.0.1:8080"),
 		QbitUser:             getEnv("QBIT_USER", "admin"),
 		QbitPass:             getEnv("QBIT_PASS", "adminadmin"),
 		QbitCategory:         getEnv("QBIT_CATEGORY", "foss-torrents"),
@@ -145,11 +86,6 @@ func LoadConfig() *Config {
 		SequentialDownload:   getEnvBool("SEQUENTIAL_DOWNLOAD", true),
 		Rules:                make(map[string]TargetRule),
 		ConfigFilePath:       configPath,
-	}
-
-	// Copy default rules
-	for k, v := range DefaultRules {
-		cfg.Rules[k] = v
 	}
 
 	// Try reading persistent json file
@@ -183,7 +119,7 @@ func LoadConfig() *Config {
 			if os.Getenv("SEQUENTIAL_DOWNLOAD") == "" {
 				cfg.SequentialDownload = diskCfg.SequentialDownload
 			}
-			if len(diskCfg.Rules) > 0 {
+			if diskCfg.Rules != nil {
 				cfg.Rules = diskCfg.Rules
 			}
 		}
