@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,16 @@ import (
 
 	"foss-seeder/internal/config"
 )
+
+func (s *Server) render(w http.ResponseWriter, name string, data any) {
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, name, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
+}
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -36,16 +47,12 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Logs: s.log.History(),
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.ExecuteTemplate(w, "index.html", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	s.render(w, "index.html", data)
 }
 
 func (s *Server) handlePartialStatus(w http.ResponseWriter, r *http.Request) {
 	status := s.syncer.Status()
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = s.templates.ExecuteTemplate(w, "status_bar.html", map[string]any{
+	s.render(w, "status_bar.html", map[string]any{
 		"Status": status,
 	})
 }
@@ -60,14 +67,12 @@ func (s *Server) handlePartialFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = s.templates.ExecuteTemplate(w, "feed_list.html", feedData)
+	s.render(w, "feed_list.html", feedData)
 }
 
 func (s *Server) handlePartialRules(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = s.templates.ExecuteTemplate(w, "rules_list.html", RulesData{
+	s.render(w, "rules_list.html", RulesData{
 		Rules: cfg.Rules,
 	})
 }
@@ -77,8 +82,7 @@ func (s *Server) handlePartialTorrents(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
 	torrents, _ := s.qbit.GetTorrents(ctx, cfg.QbitCategory)
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = s.templates.ExecuteTemplate(w, "torrents_list.html", TorrentsData{
+	s.render(w, "torrents_list.html", TorrentsData{
 		Category: cfg.QbitCategory,
 		Torrents: torrents,
 	})

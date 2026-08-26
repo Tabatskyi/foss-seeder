@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -63,21 +64,44 @@ type Client struct {
 	isLoggedIn bool
 }
 
+func normalizeURL(rawURL string) string {
+	clean := strings.TrimRight(rawURL, "/")
+	if strings.HasPrefix(clean, "http://localhost:") {
+		return "http://127.0.0.1:" + clean[len("http://localhost:"):]
+	}
+	if strings.HasPrefix(clean, "https://localhost:") {
+		return "https://127.0.0.1:" + clean[len("https://localhost:"):]
+	}
+	return clean
+}
+
 func NewClient(baseURL, username, password string) (*Client, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
 	}
 
-	cleanURL := strings.TrimRight(baseURL, "/")
+	cleanURL := normalizeURL(baseURL)
+
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        50,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
 
 	return &Client{
 		baseURL:  cleanURL,
 		username: username,
 		password: password,
 		httpClient: &http.Client{
-			Jar:     jar,
-			Timeout: 15 * time.Second,
+			Jar:       jar,
+			Timeout:   15 * time.Second,
+			Transport: transport,
 		},
 	}, nil
 }
@@ -86,7 +110,7 @@ func (c *Client) UpdateCredentials(baseURL, username, password string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.baseURL = strings.TrimRight(baseURL, "/")
+	c.baseURL = normalizeURL(baseURL)
 	c.username = username
 	c.password = password
 	c.isLoggedIn = false
