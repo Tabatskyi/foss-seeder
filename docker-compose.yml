@@ -1,0 +1,20 @@
+services:
+  foss-seeder:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: foss-seeder
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=7474
+      - FEED_URL=https://fosstorrents.com/feed/torrents.xml
+      - QBIT_HOST=http://localhost:8080
+      - QBIT_USER=admin
+      - QBIT_PASS=adminadmin
+      - QBIT_CATEGORY=foss-torrents
+      - SAVE_PATH=/path/to/storage
+      - CHECK_INTERVAL_SECONDS=43200
+      - SEQUENTIAL_DOWNLOAD=true

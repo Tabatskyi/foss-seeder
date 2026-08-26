@@ -1,0 +1,96 @@
+<div id="torrents-container">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">
+        <span>🚀 Active Torrents in qBittorrent ({{len .Torrents}})</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button 
+          class="btn btn-sm" 
+          hx-get="/partials/torrents" 
+          hx-target="#torrents-container"
+        >
+          🔄 Refresh Table
+        </button>
+      </div>
+    </div>
+
+    {{if eq (len .Torrents) 0}}
+      <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+        <p style="font-size: 15px; margin-bottom: 8px;">No torrents found under category <code>{{.Category}}</code> in qBittorrent</p>
+        <p style="font-size: 12px;">Trigger a sync cycle or make sure qBittorrent is connected and running.</p>
+      </div>
+    {{else}}
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Progress</th>
+              <th>Size</th>
+              <th>State</th>
+              <th>Ratio</th>
+              <th>Up Speed</th>
+              <th>Seeds / Leeches</th>
+              <th style="text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Torrents}}
+              <tr>
+                <td style="max-width: 300px; word-break: break-all; font-weight: 500;">
+                  {{.Name}}
+                  {{if .Tags}}
+                    <div style="margin-top: 4px;">
+                      {{range .TagList}}
+                        <span class="badge badge-info" style="font-size: 10px; margin-right: 4px;">{{.}}</span>
+                      {{end}}
+                    </div>
+                  {{end}}
+                </td>
+                <td style="min-width: 140px;">
+                  <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                    <span>{{printf "%.1f" (multiply .Progress 100)}}%</span>
+                  </div>
+                  <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width: {{multiply .Progress 100}}%;"></div>
+                  </div>
+                </td>
+                <td>{{formatBytes .Size}}</td>
+                <td>
+                  <span class="badge {{if eq .State "uploading" "seeding" "stalledUP"}}badge-success{{else if eq .State "downloading"}}badge-info{{else}}badge-muted{{end}}">
+                    {{.State}}
+                  </span>
+                </td>
+                <td style="font-weight: 600; color: #7ee787;">
+                  {{printf "%.2f" .Ratio}}
+                </td>
+                <td>
+                  {{if gt .Upspeed 0}}
+                    <span style="color: #58a6ff; font-weight: 500;">↑ {{formatBytes .Upspeed}}/s</span>
+                  {{else}}
+                    <span style="color: var(--text-muted);">0 B/s</span>
+                  {{end}}
+                </td>
+                <td>
+                  {{.NumSeeds}} / {{.NumLeechs}}
+                </td>
+                <td style="text-align: right;">
+                  <button 
+                    class="btn btn-sm btn-danger" 
+                    hx-post="/api/torrents/delete?hash={{.Hash}}&delete_files=true" 
+                    hx-target="#torrents-container"
+                    hx-confirm="Delete torrent '{{.Name}}' and its files from disk?"
+                    title="Delete torrent and files"
+                  >
+                    🗑️ Delete
+                  </button>
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{end}}
+  </div>
+</div>

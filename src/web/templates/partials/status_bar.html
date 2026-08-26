@@ -1,0 +1,33 @@
+<div class="stats-grid" id="status-bar">
+  <div class="stat-card">
+    <div class="stat-label">qBittorrent Status</div>
+    <div class="stat-value {{if eq .Status.QbitStatus "Connected"}}online{{else}}offline{{end}}">
+      {{if eq .Status.QbitStatus "Connected"}}● Online{{else}}○ Disconnected{{end}}
+    </div>
+    <div class="stat-sub">
+      {{if .Status.QbitVersion}}Version: {{.Status.QbitVersion}}{{else}}Check host/credentials in Settings{{end}}
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-label">Tracked Distros</div>
+    <div class="stat-value">{{.Status.ActiveRulesCount}} / {{.Status.TotalRulesCount}}</div>
+    <div class="stat-sub">Active rules auto-syncing</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-label">FOSS Feed Catalog</div>
+    <div class="stat-value">{{.Status.CachedFeedCount}}</div>
+    <div class="stat-sub">Available releases in feed</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-label">Next Scheduled Sync</div>
+    <div class="stat-value" style="font-size: 16px;">
+      {{if .Status.NextSyncTime.IsZero}}Pending Initial Run{{else}}{{.Status.NextSyncTime.Format "15:04:05"}}{{end}}
+    </div>
+    <div class="stat-sub">
+      Last: {{if .Status.LastSyncTime.IsZero}}Never{{else}}{{.Status.LastSyncTime.Format "15:04:05"}}{{end}}
+    </div>
+  </div>
+</div>

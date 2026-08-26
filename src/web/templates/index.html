@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FOSS Seeder — qBittorrent Distro Helper</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-group">
+      <div class="logo-icon">🌱</div>
+      <div class="logo-text">
+        <h1>FOSS Seeder</h1>
+        <p>Automated FOSS Software & ISO Rotator for qBittorrent</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button 
+        class="btn btn-primary" 
+        hx-post="/api/sync" 
+        hx-target="#status-bar"
+        hx-indicator="#sync-spinner"
+        title="Execute sync cycle immediately"
+      >
+        <span id="sync-spinner" class="spin-on-request" style="display: none;">🔄</span>
+        <span>⚡ Sync Now</span>
+      </button>
+
+      <button class="btn" onclick="openSettingsModal()" title="Configure qBittorrent & Sync parameters">
+        ⚙️ Settings
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="app-container">
+
+    <!-- Status Bar / Stats Grid -->
+    {{template "status_bar.html" .}}
+
+    <!-- Tabs Navigation -->
+    <nav class="nav-tabs" id="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('selector-tab', this)">
+        <span>📦 Distro Selector</span>
+        <span class="tab-badge">{{.Status.CachedFeedCount}}</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('rules-tab', this)">
+        <span>📋 Tracked Rules</span>
+        <span class="tab-badge">{{.Status.ActiveRulesCount}}</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('torrents-tab', this)">
+        <span>🚀 Active Torrents</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('logs-tab', this)">
+        <span>📜 Live Activity Log</span>
+      </button>
+    </nav>
+
+    <!-- Tab 1: Distro Selector -->
+    <section id="selector-tab" class="tab-pane">
+      {{template "feed_list.html" .FeedData}}
+    </section>
+
+    <!-- Tab 2: Tracked Rules -->
+    <section id="rules-tab" class="tab-pane" style="display: none;">
+      {{template "rules_list.html" .RulesData}}
+    </section>
+
+    <!-- Tab 3: Active Torrents in qBittorrent -->
+    <section id="torrents-tab" class="tab-pane" style="display: none;">
+      {{template "torrents_list.html" .TorrentsData}}
+    </section>
+
+    <!-- Tab 4: Live Activity Logs -->
+    <section id="logs-tab" class="tab-pane" style="display: none;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span>📜 Live Event Stream</span>
+          </div>
+          <button class="btn btn-sm" onclick="document.getElementById('log-console').innerHTML=''">
+            🧹 Clear Console
+          </button>
+        </div>
+        <div class="log-console" id="log-console">
+          {{range .Logs}}
+            <div class="log-entry">
+              <span class="log-time">{{.Timestamp}}</span>
+              <span class="log-lvl {{.Level}}">[{{.Level}}]</span>
+              <span class="log-msg">{{.Message}}</span>
+            </div>
+          {{end}}
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="card-header" style="margin-bottom: 20px;">
+        <h2 style="font-size: 18px; font-weight: 700;">⚙️ Application Settings</h2>
+        <button class="btn btn-sm" onclick="closeSettingsModal()">✕</button>
+      </div>
+
+      <form hx-post="/api/settings" hx-target="#status-bar" onsubmit="setTimeout(closeSettingsModal, 200);">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          
+          <div class="form-group">
+            <label class="form-label">qBittorrent Host URL</label>
+            <input type="text" name="qbit_host" value="{{.Config.QbitHost}}" required class="form-control" placeholder="e.g. http://localhost:8080" />
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">qBittorrent Username</label>
+              <input type="text" name="qbit_user" value="{{.Config.QbitUser}}" required class="form-control" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">qBittorrent Password</label>
+              <input type="password" name="qbit_pass" value="" placeholder="(Unchanged if blank)" class="form-control" />
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">qBittorrent Category</label>
+              <input type="text" name="qbit_category" value="{{.Config.QbitCategory}}" required class="form-control" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Default Save Path</label>
+              <input type="text" name="save_path" value="{{.Config.SavePath}}" required class="form-control" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">FOSS RSS Feed URL</label>
+            <input type="text" name="feed_url" value="{{.Config.FeedURL}}" required class="form-control" />
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Check Interval (Seconds)</label>
+              <input type="number" name="check_interval" value="{{.Config.CheckIntervalSeconds}}" required min="60" class="form-control" />
+              <span style="font-size: 11px; color: var(--text-muted);">Default: 43200s (12 hours)</span>
+            </div>
+
+            <div class="form-group" style="justify-content: center;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; margin-top: 18px;">
+                <input type="checkbox" name="sequential_download" value="true" {{if .Config.SequentialDownload}}checked{{end}} />
+                Sequential Download (first/last pieces)
+              </label>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+            <button type="button" class="btn btn-blue btn-sm" hx-post="/api/qbit/test" hx-target="#test-conn-result">
+              🔍 Test Connection
+            </button>
+            <span id="test-conn-result" style="font-size: 12px;"></span>
+            
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-sm" onclick="closeSettingsModal()">Cancel</button>
+              <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
+            </div>
+          </div>
+
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tabId, el) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      const activePane = document.getElementById(tabId);
+      if (activePane) activePane.style.display = 'block';
+      if (el) el.classList.add('active');
+
+      if (tabId === 'torrents-tab') {
+        htmx.ajax('GET', '/partials/torrents', '#torrents-container');
+      }
+    }
+
+    function openSettingsModal() {
+      document.getElementById('settings-modal').classList.add('open');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settings-modal').classList.remove('open');
+    }
+
+    // Auto-scroll and append Server-Sent Events (SSE) logs
+    const eventSource = new EventSource('/api/logs/stream');
+    eventSource.onmessage = function(e) {
+      try {
+        const entry = JSON.parse(e.data);
+        const logConsole = document.getElementById('log-console');
+        if (!logConsole) return;
+
+        const row = document.createElement('div');
+        row.className = 'log-entry';
+        row.innerHTML = `
+          <span class="log-time">${entry.timestamp}</span>
+          <span class="log-lvl ${entry.level}">[${entry.level}]</span>
+          <span class="log-msg">${escapeHtml(entry.message)}</span>
+        `;
+        logConsole.appendChild(row);
+        logConsole.scrollTop = logConsole.scrollHeight;
+      } catch (err) {
+        console.error("SSE parse error", err);
+      }
+    };
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+  </script>
+</body>
+</html>

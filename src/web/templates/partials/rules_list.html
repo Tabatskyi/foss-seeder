@@ -1,0 +1,118 @@
+<div id="rules-container">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">
+        <span>📋 Tracked Software Families ({{len .Rules}})</span>
+      </div>
+      <button class="btn btn-sm btn-blue" onclick="document.getElementById('add-rule-card').style.display = document.getElementById('add-rule-card').style.display === 'none' ? 'block' : 'none'">
+        + Add Custom Rule
+      </button>
+    </div>
+
+    <!-- Collapsible Add Custom Rule Form -->
+    <div id="add-rule-card" class="card" style="display: none; background: var(--bg-tertiary); margin-bottom: 20px;">
+      <h3 style="font-size: 14px; margin-bottom: 12px;">Add Custom Distro / Software Pattern</h3>
+      <form hx-post="/api/rules/add" hx-target="#rules-container" style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Rule Identifier (slug/key)</label>
+            <input type="text" name="key" required placeholder="e.g. archlinux-minimal" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Display Name</label>
+            <input type="text" name="name" required placeholder="e.g. Arch Linux Minimal" class="form-control" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Title Regex Pattern (Case Insensitive)</label>
+          <input type="text" name="title_regex" required placeholder="e.g. ArchLinux .* or Ubuntu .* - Desktop" class="form-control" style="font-family: var(--font-mono);" />
+          <span style="font-size: 11px; color: var(--text-muted);">Matches against feed item titles from fosstorrents.com</span>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Custom Save Path (Optional)</label>
+            <input type="text" name="save_path" placeholder="Leave blank to use default save path" class="form-control" />
+          </div>
+          <div class="form-group" style="justify-content: center;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; margin-top: 18px;">
+              <input type="checkbox" name="auto_purge" value="true" checked />
+              Auto-purge older obsolete versions
+            </label>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+          <button type="button" class="btn btn-sm" onclick="document.getElementById('add-rule-card').style.display='none'">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary">Save Rule</button>
+        </div>
+      </form>
+    </div>
+
+    {{if eq (len .Rules) 0}}
+      <div style="text-align: center; padding: 30px; color: var(--text-secondary);">
+        No tracked rules defined yet. Use the <strong>Distro Selector</strong> tab to track software with one click!
+      </div>
+    {{else}}
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Display Name</th>
+              <th>Identifier (Tag)</th>
+              <th>Regex Pattern</th>
+              <th>Auto-Purge</th>
+              <th style="text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range $k, $v := .Rules}}
+              <tr>
+                <td>
+                  <label class="switch" title="Toggle active auto-syncing">
+                    <input 
+                      type="checkbox" 
+                      {{if $v.Enabled}}checked{{end}}
+                      hx-post="/api/rules/toggle?key={{$v.Key}}" 
+                      hx-target="#rules-container"
+                    />
+                    <span class="slider"></span>
+                  </label>
+                </td>
+                <td style="font-weight: 600;">
+                  {{$v.Name}}
+                </td>
+                <td>
+                  <span class="badge badge-info">{{$v.Key}}</span>
+                </td>
+                <td>
+                  <code style="font-family: var(--font-mono); font-size: 12px; color: #79c0ff;">{{$v.TitleRegex}}</code>
+                </td>
+                <td>
+                  {{if $v.AutoPurge}}
+                    <span class="badge badge-success" title="Deletes previous ISO version when a newer one is added">Enabled</span>
+                  {{else}}
+                    <span class="badge badge-muted">Keep all</span>
+                  {{end}}
+                </td>
+                <td style="text-align: right;">
+                  <button 
+                    class="btn btn-sm btn-danger" 
+                    hx-post="/api/rules/delete?key={{$v.Key}}" 
+                    hx-target="#rules-container"
+                    hx-confirm="Are you sure you want to remove rule '{{$v.Name}}'?"
+                    title="Delete rule"
+                  >
+                    🗑️ Remove
+                  </button>
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{end}}
+  </div>
+</div>

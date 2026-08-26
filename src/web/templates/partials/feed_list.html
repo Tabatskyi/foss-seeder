@@ -1,0 +1,96 @@
+<div id="feed-container">
+  <div class="filter-bar">
+    <div class="search-input-wrapper">
+      <span class="search-icon">🔍</span>
+      <input 
+        type="text" 
+        name="q" 
+        value="{{.Query}}" 
+        placeholder="Filter software, distros, or architectures (e.g. arch, cachy, debian, x86_64, aarch64)..." 
+        class="search-input"
+        hx-get="/partials/feed" 
+        hx-target="#feed-container" 
+        hx-trigger="keyup changed delay:250ms, search"
+        hx-include="this"
+        autocomplete="off"
+      />
+    </div>
+
+    <button 
+      class="btn btn-sm" 
+      hx-get="/partials/feed?refresh=true" 
+      hx-target="#feed-container"
+      title="Fetch latest updates from fosstorrents.com"
+    >
+      🔄 Refresh Feed
+    </button>
+  </div>
+
+  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
+    Showing {{len .Items}} releases from FOSSTorrents feed
+    {{if .Query}} matching "<strong>{{.Query}}</strong>"{{end}}
+  </div>
+
+  {{if eq (len .Items) 0}}
+    <div class="card" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+      <p style="font-size: 16px; margin-bottom: 8px;">No matching software found</p>
+      <p style="font-size: 13px;">Try clearing your search query or refreshing the feed.</p>
+    </div>
+  {{else}}
+    <div class="feed-grid">
+      {{range .Items}}
+        <div class="feed-item-card {{if .IsTracked}}is-tracked{{end}}">
+          <div>
+            <div class="feed-item-header">
+              <span class="feed-item-title">{{.Item.Title}}</span>
+              {{if .IsTracked}}
+                <span class="badge badge-success">Tracked</span>
+              {{else}}
+                <span class="badge badge-muted">Untracked</span>
+              {{end}}
+            </div>
+
+            <div class="feed-item-meta" style="margin-top: 8px;">
+              <span>📅 {{.Item.Published}}</span>
+              {{if .MatchingRuleKey}}
+                <span>🏷️ Rule: <code>{{.MatchingRuleKey}}</code></span>
+              {{end}}
+            </div>
+          </div>
+
+          <div class="feed-item-actions">
+            <a href="{{.Item.TorrentURL}}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" title="Download .torrent directly">
+              📥 .torrent
+            </a>
+
+            {{if .IsTracked}}
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: var(--text-secondary);">
+                  {{if .RuleEnabled}}Auto-Sync ON{{else}}Paused{{end}}
+                </span>
+                <label class="switch" title="Toggle active auto-syncing for this distro rule">
+                  <input 
+                    type="checkbox" 
+                    {{if .RuleEnabled}}checked{{end}}
+                    hx-post="/api/rules/toggle?key={{.MatchingRuleKey}}" 
+                    hx-target="#feed-container"
+                    hx-include="[name='q']"
+                  />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            {{else}}
+              <form hx-post="/api/rules/add-from-feed" hx-target="#feed-container" hx-include="[name='q']" style="margin: 0;">
+                <input type="hidden" name="title" value="{{.Item.Title}}" />
+                <input type="hidden" name="torrent_url" value="{{.Item.TorrentURL}}" />
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Track Distro
+                </button>
+              </form>
+            {{end}}
+          </div>
+        </div>
+      {{end}}
+    </div>
+  {{end}}
+</div>
