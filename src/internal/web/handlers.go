@@ -297,6 +297,7 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
+	verPattern0  = regexp.MustCompile(`\b\d+-\d+(\.\d+)*\b`)
 	verPattern1  = regexp.MustCompile(`\b\d+(\.\d+)+(-\w+)?\b`)
 	verPattern2  = regexp.MustCompile(`\b(19|20)\d{2}\d{2}\d{2}(\.\d+)?\b`)
 	verPattern3  = regexp.MustCompile(`\b\d{6}\b`)
@@ -317,6 +318,7 @@ func cleanDisplayName(title string) string {
 		}
 	}
 
+	name = verPattern0.ReplaceAllString(name, "")
 	name = verPattern1.ReplaceAllString(name, "")
 	name = verPattern2.ReplaceAllString(name, "")
 	name = verPattern3.ReplaceAllString(name, "")
@@ -338,9 +340,12 @@ func createSlug(s string) string {
 	return slug
 }
 
+var (
+	smartVerPattern = regexp.MustCompile(`\b\d+(?:-\d+)?(\\\.\d+)+(-\w+)?\b|\b\d+-\d{6,8}(\\\.\d+)?\b|\b(19|20)\d{2}\d{2}\d{2}(\\\.\d+)?\b|\b\d{6,8}(\\\.\d+)?\b`)
+)
+
 func generateSmartRegex(title string) string {
 	escaped := regexp.QuoteMeta(title)
-	numPat := regexp.MustCompile(`\b\d+(\\\.\d+)+(-\w+)?\b|\b\d{6,8}(\\\.\d+)?\b`)
-	smart := numPat.ReplaceAllString(escaped, `.*`)
-	return smart
+	smart := smartVerPattern.ReplaceAllString(escaped, `\d+(?:[.\-_]\w+)*`)
+	return "^" + smart + "$"
 }

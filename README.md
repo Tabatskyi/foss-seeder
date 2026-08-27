@@ -74,3 +74,19 @@ go test ./...
 # Start the application
 PORT=7474 ../bin/foss-seeder
 ```
+
+---
+
+## To-Do
+
+- Add more RSS feed sources for additional FOSS distros and software.
+- Add size preview for ISOs.
+- Add available space on disk to the UI.
+- Add support for additional torrent clients (e.g. Transmission, Deluge, etc.).
+- Replace Emojis with SVG icons for better cross-platform compatibility.
+
+--- 
+
+## Known Bugs
+
+- UI frequently freezes, refreshing the page usually resolves the issue. This is likely due to a bug in HTMX or the SSE implementation.
