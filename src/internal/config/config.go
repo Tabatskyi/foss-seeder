@@ -92,33 +92,31 @@ func LoadConfig() *Config {
 	if data, err := os.ReadFile(configPath); err == nil {
 		var diskCfg Config
 		if err := json.Unmarshal(data, &diskCfg); err == nil {
-			if diskCfg.Port != "" && os.Getenv("PORT") == "" {
+			if diskCfg.Port != "" {
 				cfg.Port = diskCfg.Port
 			}
-			if diskCfg.FeedURL != "" && os.Getenv("FEED_URL") == "" {
+			if diskCfg.FeedURL != "" {
 				cfg.FeedURL = diskCfg.FeedURL
 			}
-			if diskCfg.QbitHost != "" && os.Getenv("QBIT_HOST") == "" {
+			if diskCfg.QbitHost != "" {
 				cfg.QbitHost = diskCfg.QbitHost
 			}
-			if diskCfg.QbitUser != "" && os.Getenv("QBIT_USER") == "" {
+			if diskCfg.QbitUser != "" {
 				cfg.QbitUser = diskCfg.QbitUser
 			}
-			if diskCfg.QbitPass != "" && os.Getenv("QBIT_PASS") == "" {
+			if diskCfg.QbitPass != "" {
 				cfg.QbitPass = diskCfg.QbitPass
 			}
-			if diskCfg.QbitCategory != "" && os.Getenv("QBIT_CATEGORY") == "" {
+			if diskCfg.QbitCategory != "" {
 				cfg.QbitCategory = diskCfg.QbitCategory
 			}
-			if diskCfg.SavePath != "" && os.Getenv("SAVE_PATH") == "" {
+			if diskCfg.SavePath != "" {
 				cfg.SavePath = diskCfg.SavePath
 			}
-			if diskCfg.CheckIntervalSeconds > 0 && os.Getenv("CHECK_INTERVAL_SECONDS") == "" {
+			if diskCfg.CheckIntervalSeconds > 0 {
 				cfg.CheckIntervalSeconds = diskCfg.CheckIntervalSeconds
 			}
-			if os.Getenv("SEQUENTIAL_DOWNLOAD") == "" {
-				cfg.SequentialDownload = diskCfg.SequentialDownload
-			}
+			cfg.SequentialDownload = diskCfg.SequentialDownload
 			if diskCfg.Rules != nil {
 				cfg.Rules = diskCfg.Rules
 			}
