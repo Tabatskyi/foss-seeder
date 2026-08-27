@@ -71,3 +71,44 @@ func TestIsTorrentMatching(t *testing.T) {
 		}
 	}
 }
+
+func TestIsSameFamily(t *testing.T) {
+	tests := []struct {
+		torrentName  string
+		expectedName string
+		shouldMatch  bool
+	}{
+		{
+			torrentName:  "archlinux-2026.07.01-x86_64.iso",
+			expectedName: "archlinux-2026.08.01-x86_64.iso",
+			shouldMatch:  true,
+		},
+		{
+			torrentName:  "debian-12.4.0-amd64-netinst.iso",
+			expectedName: "debian-12.5.0-amd64-netinst.iso",
+			shouldMatch:  true,
+		},
+		{
+			torrentName:  "debian-12.5.0-amd64-edu-netinst.iso",
+			expectedName: "debian-12.5.0-amd64-netinst.iso",
+			shouldMatch:  false,
+		},
+		{
+			torrentName:  "cachyos-desktop-linux-260809.iso",
+			expectedName: "cachyos-desktop-linux-260824.iso",
+			shouldMatch:  true,
+		},
+		{
+			torrentName:  "ubuntu-24.04-desktop-amd64.iso",
+			expectedName: "debian-12.5.0-amd64-netinst.iso",
+			shouldMatch:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		got := IsSameFamily(tt.torrentName, tt.expectedName)
+		if got != tt.shouldMatch {
+			t.Errorf("IsSameFamily(%q, %q) = %v, want %v", tt.torrentName, tt.expectedName, got, tt.shouldMatch)
+		}
+	}
+}

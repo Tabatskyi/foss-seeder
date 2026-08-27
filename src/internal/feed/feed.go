@@ -141,3 +141,26 @@ func IsTorrentMatching(torrentName, expectedName string) bool {
 
 	return tStem != "" && tStem == expStem
 }
+
+var familyVerPattern = regexp.MustCompile(`\b\d+(?:-\d+)?(\\\.\d+)+(-\d+)?\b|\b\d+-\d{6,8}(\\\.\d+)?\b|\b(19|20)\d{2}\d{2}\d{2}(\\\.\d+)?\b|\b\d{6,8}(\\\.\d+)?\b`)
+
+func IsSameFamily(torrentName, expectedName string) bool {
+	if IsTorrentMatching(torrentName, expectedName) {
+		return true
+	}
+
+	tStem := CleanStem(torrentName)
+	expStem := CleanStem(expectedName)
+	if tStem == "" || expStem == "" {
+		return false
+	}
+
+	escapedExp := regexp.QuoteMeta(expStem)
+	smartExp := familyVerPattern.ReplaceAllString(escapedExp, `[0-9]+(?:\.[0-9]+)*(?:-[0-9]+)*`)
+	re, err := regexp.Compile("^(?i)" + smartExp + "$")
+	if err != nil {
+		return false
+	}
+
+	return re.MatchString(tStem)
+}

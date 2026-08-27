@@ -193,7 +193,7 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = s.cfg.SetRule(rule)
-	s.log.Success("Auto-created and tracked rule '%s' [tag: %s, regex: %s]", displayName, slug, regexPattern)
+	s.log.Success("Auto-created and tracked rule '%s' [key: %s, regex: %s]", displayName, slug, regexPattern)
 
 	s.handlePartialFeed(w, r)
 }

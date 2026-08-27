@@ -14,15 +14,15 @@ import (
 )
 
 type Status struct {
-	LastSyncTime      time.Time `json:"last_sync_time"`
-	NextSyncTime      time.Time `json:"next_sync_time"`
-	IsSyncing         bool      `json:"is_syncing"`
-	LastError         string    `json:"last_error"`
-	ActiveRulesCount  int       `json:"active_rules_count"`
-	TotalRulesCount   int       `json:"total_rules_count"`
-	CachedFeedCount   int       `json:"cached_feed_count"`
-	QbitStatus        string    `json:"qbit_status"`
-	QbitVersion       string    `json:"qbit_version"`
+	LastSyncTime     time.Time `json:"last_sync_time"`
+	NextSyncTime     time.Time `json:"next_sync_time"`
+	IsSyncing        bool      `json:"is_syncing"`
+	LastError        string    `json:"last_error"`
+	ActiveRulesCount int       `json:"active_rules_count"`
+	TotalRulesCount  int       `json:"total_rules_count"`
+	CachedFeedCount  int       `json:"cached_feed_count"`
+	QbitStatus       string    `json:"qbit_status"`
+	QbitVersion      string    `json:"qbit_version"`
 }
 
 type Syncer struct {
@@ -191,7 +191,7 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 		// Find torrents in qBittorrent belonging to this family
 		var familyTorrents []qbit.Torrent
 		for _, t := range activeTorrents {
-			if t.HasTag(key) || feed.IsTorrentMatching(t.Name, expectedName) {
+			if feed.IsSameFamily(t.Name, expectedName) {
 				familyTorrents = append(familyTorrents, t)
 			}
 		}
@@ -213,7 +213,7 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 			s.log.Info("[%s] Up to date: %s", key, latestItem.Title)
 		} else {
 			s.log.Success("[%s] Adding new release: %s", key, latestItem.Title)
-			err := s.qbitClient.AddTorrent(ctx, latestItem.TorrentURL, c.QbitCategory, savePath, []string{key}, c.SequentialDownload)
+			err := s.qbitClient.AddTorrent(ctx, latestItem.TorrentURL, c.QbitCategory, savePath, nil, c.SequentialDownload)
 			if err != nil {
 				s.log.Error("[%s] Failed to add torrent: %v", key, err)
 			} else {
@@ -221,7 +221,6 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 			}
 		}
 
-		// Auto-purge obsolete versions in this family
 		if rule.AutoPurge {
 			for _, oldT := range familyTorrents {
 				if !feed.IsTorrentMatching(oldT.Name, expectedName) {
