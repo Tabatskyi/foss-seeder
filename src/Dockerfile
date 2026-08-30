@@ -17,15 +17,13 @@ FROM alpine:latest
 WORKDIR /app
 
 RUN apk add --no-cache ca-certificates tzdata && \
-    addgroup -S appgroup && adduser -S appuser -G appgroup && \
-    mkdir -p /app/data && chown -R appuser:appgroup /app
+    mkdir -p /app/data
 
 COPY --from=builder /build/foss-seeder /app/foss-seeder
-
-USER appuser
 
 EXPOSE 7474
 
 VOLUME ["/app/data"]
 
 ENTRYPOINT ["/app/foss-seeder"]
+
