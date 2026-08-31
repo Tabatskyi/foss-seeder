@@ -590,3 +590,26 @@ input:checked + .slider:before {
     grid-template-columns: 1fr;
   }
 }
+
+/* HTMX loading indicators */
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request .htmx-indicator {
+  display: inline-block;
+}
+
+.htmx-request.htmx-indicator {
+  display: inline-block;
+}
+
+/* Subtle swap transition */
+.htmx-settling {
+  opacity: 0.8;
+}
+
+.htmx-swapping {
+  opacity: 0.5;
+  transition: opacity 0.15s ease-out;
+}

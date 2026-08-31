@@ -24,6 +24,35 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	_, _ = buf.WriteTo(w)
 }
 
+// renderWithOOB renders the primary template, then appends OOB fragments
+// (status bar + tab badges) so multiple panels update in one response.
+func (s *Server) renderWithOOB(w http.ResponseWriter, name string, data any) {
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, name, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Append OOB status bar
+	status := s.syncer.Status()
+	var oobBuf bytes.Buffer
+	_ = s.templates.ExecuteTemplate(&oobBuf, "status_bar.html", map[string]any{
+		"Status": status,
+	})
+	// Inject hx-swap-oob attribute into the rendered status bar
+	oobHTML := strings.Replace(oobBuf.String(),
+		`id="status-bar"`,
+		`id="status-bar" hx-swap-oob="true"`,
+		1)
+	buf.WriteString(oobHTML)
+
+	// Append OOB tab badges
+	_ = s.templates.ExecuteTemplate(&buf, "tab_badges.html", status)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	cfg := s.cfg.Get()
@@ -117,9 +146,11 @@ func (s *Server) handleToggleRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.Contains(r.Header.Get("HX-Target"), "feed") || query != "" || !strings.Contains(referer, "rules") {
-		s.handlePartialFeed(w, r)
+		feedData, _ := s.buildFeedData(r.Context(), query, false)
+		s.renderWithOOB(w, "feed_list.html", feedData)
 	} else {
-		s.handlePartialRules(w, r)
+		cfg := s.cfg.Get()
+		s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules})
 	}
 }
 
@@ -162,7 +193,8 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 	_ = s.cfg.SetRule(rule)
 	s.log.Success("Added new rule '%s' (%s)", name, key)
 
-	s.handlePartialRules(w, r)
+	cfg := s.cfg.Get()
+	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules})
 }
 
 func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +227,9 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 	_ = s.cfg.SetRule(rule)
 	s.log.Success("Auto-created and tracked rule '%s' [key: %s, regex: %s]", displayName, slug, regexPattern)
 
-	s.handlePartialFeed(w, r)
+	query := r.FormValue("q")
+	feedData, _ := s.buildFeedData(r.Context(), query, false)
+	s.renderWithOOB(w, "feed_list.html", feedData)
 }
 
 func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +243,8 @@ func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 		s.log.Warn("Removed rule '%s'", key)
 	}
 
-	s.handlePartialRules(w, r)
+	cfg := s.cfg.Get()
+	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules})
 }
 
 func (s *Server) handleDeleteTorrent(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +260,13 @@ func (s *Server) handleDeleteTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.handlePartialTorrents(w, r)
+	ctx := r.Context()
+	cfg := s.cfg.Get()
+	torrents, _ := s.qbit.GetTorrents(ctx, cfg.QbitCategory)
+	s.renderWithOOB(w, "torrents_list.html", TorrentsData{
+		Category: cfg.QbitCategory,
+		Torrents: torrents,
+	})
 }
 
 func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {

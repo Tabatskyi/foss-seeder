@@ -41,17 +41,19 @@
   <main class="app-container">
 
     <!-- Status Bar / Stats Grid -->
-    {{template "status_bar.html" .}}
+    <div hx-get="/partials/status" hx-trigger="every 30s" hx-target="this" hx-swap="innerHTML">
+      {{template "status_bar.html" .}}
+    </div>
 
     <!-- Tabs Navigation -->
     <nav class="nav-tabs" id="tab-nav">
       <button class="tab-btn active" onclick="switchTab('selector-tab', this)">
         <span>📦 Distro Selector</span>
-        <span class="tab-badge">{{.Status.CachedFeedCount}}</span>
+        <span id="tab-badge-feed" class="tab-badge">{{.Status.CachedFeedCount}}</span>
       </button>
       <button class="tab-btn" onclick="switchTab('rules-tab', this)">
         <span>📋 Tracked Rules</span>
-        <span class="tab-badge">{{.Status.ActiveRulesCount}}</span>
+        <span id="tab-badge-rules" class="tab-badge">{{.Status.ActiveRulesCount}}</span>
       </button>
       <button class="tab-btn" onclick="switchTab('torrents-tab', this)">
         <span>🚀 Active Torrents</span>
