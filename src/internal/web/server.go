@@ -42,6 +42,8 @@ type FeedData struct {
 	FeedInfos        []syncer.FeedInfo
 	SeparateFeedTabs bool
 	Items            []FeedItemView
+	TotalSize        int64
+	UntrackedCount   int
 }
 
 type RulesData struct {
@@ -55,7 +57,7 @@ type TorrentsData struct {
 }
 
 type IndexData struct {
-	Config       config.Config
+	Config       *config.Config
 	Status       syncer.Status
 	FeedInfos    []syncer.FeedInfo
 	FeedData     FeedData
@@ -129,6 +131,8 @@ func (s *Server) setupRoutes() {
 	r.Post("/api/rules/add", s.handleAddRule)
 	r.Post("/api/rules/add-from-feed", s.handleAddRuleFromFeed)
 	r.Post("/api/rules/delete", s.handleDeleteRule)
+	r.Post("/api/feed/track-all", s.handleTrackAll)
+	r.Post("/api/feed/download-all", s.handleTrackAll)
 	r.Post("/api/torrents/delete", s.handleDeleteTorrent)
 	r.Post("/api/settings", s.handleSaveSettings)
 	r.Post("/api/settings/toggle-tabs", s.handleToggleSeparateFeedTabs)
@@ -167,6 +171,8 @@ func (s *Server) buildFeedData(ctx context.Context, query string, selectedFeed s
 
 	qLower := strings.ToLower(strings.TrimSpace(query))
 	var items []FeedItemView
+	var totalSize int64
+	var untrackedCount int
 
 	for _, item := range feedItems {
 		// Filter by feed if selected
@@ -192,6 +198,11 @@ func (s *Server) buildFeedData(ctx context.Context, query string, selectedFeed s
 			}
 		}
 
+		totalSize += item.Size
+		if !view.IsTracked {
+			untrackedCount++
+		}
+
 		items = append(items, view)
 	}
 
@@ -201,5 +212,7 @@ func (s *Server) buildFeedData(ctx context.Context, query string, selectedFeed s
 		FeedInfos:        feedInfos,
 		SeparateFeedTabs: cfg.SeparateFeedTabs,
 		Items:            items,
+		TotalSize:        totalSize,
+		UntrackedCount:   untrackedCount,
 	}, nil
 }

@@ -180,7 +180,7 @@ func (c *Config) Save() error {
 	return os.WriteFile(c.ConfigFilePath, data, 0644)
 }
 
-func (c *Config) Get() Config {
+func (c *Config) Get() *Config {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -192,7 +192,7 @@ func (c *Config) Get() Config {
 	feedURLsCopy := make([]string, len(c.FeedURLs))
 	copy(feedURLsCopy, c.FeedURLs)
 
-	return Config{
+	return &Config{
 		Port:                 c.Port,
 		FeedURL:              c.FeedURL,
 		FeedURLs:             feedURLsCopy,

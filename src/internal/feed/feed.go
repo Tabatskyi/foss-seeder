@@ -116,7 +116,6 @@ func (c *Client) Fetch(ctx context.Context, feedURL string) ([]Item, error) {
 		}
 
 		item := Item{
-			Title:        strings.TrimSpace(entry.Title),
 			Title:        title,
 			TorrentURL:   torrentURL,
 			Size:         extractSize(entry),
@@ -124,7 +123,6 @@ func (c *Client) Fetch(ctx context.Context, feedURL string) ([]Item, error) {
 			GUID:         entry.GUID,
 			Published:    pubTime.Format("2006-01-02 15:04"),
 			PublishedAt:  pubTime,
-			ExpectedName: ExtractFilenameFromURL(torrentURL),
 			ExpectedName: expectedName,
 		}
 		items = append(items, item)

@@ -267,10 +267,73 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 		s.log.Success("Auto-created and tracked rule '%s' [key: %s, regex: %s]", displayName, slug, regexPattern)
 	}
 
+	torrentURL := strings.TrimSpace(r.FormValue("torrent_url"))
+	if torrentURL != "" {
+		cfg := s.cfg.Get()
+		savePath := cfg.SavePath
+		_ = s.qbit.AddTorrent(r.Context(), torrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+	}
+
 	query := r.FormValue("q")
 	selectedFeed := r.FormValue("selected_feed")
 	feedData, _ := s.buildFeedData(r.Context(), query, selectedFeed, false)
 	s.renderWithOOB(w, "feed_list.html", feedData)
+}
+
+func (s *Server) handleTrackAll(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	query := r.FormValue("q")
+	selectedFeed := r.FormValue("feed_url")
+	if selectedFeed == "" {
+		selectedFeed = r.FormValue("feed_filter")
+	}
+
+	feedData, err := s.buildFeedData(ctx, query, selectedFeed, false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	cfg := s.cfg.Get()
+	addedCount := 0
+	for _, item := range feedData.Items {
+		if item.IsTracked || item.Item.TorrentURL == "" {
+			continue
+		}
+
+		displayName := cleanDisplayName(item.Item.Title)
+		if displayName == "" {
+			displayName = item.Item.Title
+		}
+		slug := createSlug(displayName)
+		regexPattern := generateSmartRegex(item.Item.Title)
+
+		rule := config.TargetRule{
+			Key:        slug,
+			Name:       displayName,
+			TitleRegex: regexPattern,
+			Enabled:    true,
+			AutoPurge:  true,
+			FeedURL:    item.Item.SourceFeedURL,
+		}
+		_ = s.cfg.SetRule(rule)
+
+		savePath := cfg.SavePath
+		_ = s.qbit.AddTorrent(ctx, item.Item.TorrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+		addedCount++
+	}
+
+	if addedCount > 0 {
+		s.log.Success("Auto-created rules and queued %d releases in qBittorrent", addedCount)
+	}
+
+	updatedFeedData, _ := s.buildFeedData(ctx, query, selectedFeed, false)
+	s.renderWithOOB(w, "feed_list.html", updatedFeedData)
 }
 
 func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
