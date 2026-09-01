@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 type Item struct {
 	Title            string    `json:"title"`
 	TorrentURL       string    `json:"torrent_url"`
+	Size             int64     `json:"size"`
 	Description      string    `json:"description"`
 	GUID             string    `json:"guid"`
 	Published        string    `json:"published"`
@@ -105,6 +107,7 @@ func (c *Client) Fetch(ctx context.Context, feedURL string) ([]Item, error) {
 		item := Item{
 			Title:        strings.TrimSpace(entry.Title),
 			TorrentURL:   torrentURL,
+			Size:         extractSize(entry),
 			Description:  strings.TrimSpace(entry.Description),
 			GUID:         entry.GUID,
 			Published:    pubTime.Format("2006-01-02 15:04"),
@@ -115,6 +118,83 @@ func (c *Client) Fetch(ctx context.Context, feedURL string) ([]Item, error) {
 	}
 
 	return items, nil
+}
+
+func extractSize(entry *gofeed.Item) int64 {
+	if entry == nil {
+		return 0
+	}
+
+	// 1. Check custom fields (e.g. <size> tag)
+	if entry.Custom != nil {
+		if s, ok := entry.Custom["size"]; ok && s != "" {
+			if v, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64); err == nil && v > 0 {
+				return v
+			}
+		}
+	}
+
+	// 2. Check XML Extensions (e.g. <torrent:contentLength> or <torrent:size>)
+	if entry.Extensions != nil {
+		for _, exMap := range entry.Extensions {
+			for key, exList := range exMap {
+				kLower := strings.ToLower(key)
+				if kLower == "size" || kLower == "contentlength" || kLower == "content_length" {
+					for _, ex := range exList {
+						if v, err := strconv.ParseInt(strings.TrimSpace(ex.Value), 10, 64); err == nil && v > 0 {
+							return v
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Check Enclosure length (if > 1MB, it is likely the payload size)
+	for _, enc := range entry.Enclosures {
+		if enc != nil && enc.Length != "" {
+			if v, err := strconv.ParseInt(strings.TrimSpace(enc.Length), 10, 64); err == nil && v > 1024*1024 {
+				return v
+			}
+		}
+	}
+
+	// 4. Check Description for size text (e.g., "Size: 4.2 GB")
+	if entry.Description != "" {
+		if size := parseSizeFromText(entry.Description); size > 0 {
+			return size
+		}
+	}
+
+	return 0
+}
+
+var sizeTextRegex = regexp.MustCompile(`(?i)\b(?:size|length):\s*([0-9]+(?:\.[0-9]+)?)\s*(B|KB|MB|GB|TB|PB|KiB|MiB|GiB|TiB|PiB)\b`)
+
+func parseSizeFromText(text string) int64 {
+	match := sizeTextRegex.FindStringSubmatch(text)
+	if len(match) < 3 {
+		return 0
+	}
+	val, err := strconv.ParseFloat(match[1], 64)
+	if err != nil || val <= 0 {
+		return 0
+	}
+	unit := strings.ToUpper(match[2])
+	multiplier := float64(1)
+	switch unit {
+	case "KB", "KIB":
+		multiplier = 1024
+	case "MB", "MIB":
+		multiplier = 1024 * 1024
+	case "GB", "GIB":
+		multiplier = 1024 * 1024 * 1024
+	case "TB", "TIB":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	case "PB", "PIB":
+		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
+	}
+	return int64(val * multiplier)
 }
 
 func extractTorrentURL(entry *gofeed.Item) string {

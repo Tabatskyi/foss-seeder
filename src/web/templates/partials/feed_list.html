@@ -78,6 +78,11 @@
 
             <div class="feed-item-meta" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
               <span>📅 {{.Item.Published}}</span>
+              {{if gt .Item.Size 0}}
+                <span class="badge badge-muted" style="font-size: 11px;" title="Payload size">
+                  💾 {{formatBytes .Item.Size}}
+                </span>
+              {{end}}
               {{if .Item.SourceFeedName}}
                 <span class="badge badge-info" style="font-size: 11px;" title="{{.Item.SourceFeedURL}}">
                   🏷️ {{.Item.SourceFeedName}}

@@ -34,27 +34,29 @@ type Status struct {
 }
 
 type Syncer struct {
-	cfg         *config.Config
-	feedClient  *feed.Client
-	qbitClient  *qbit.Client
-	log         *logger.Logger
-	mu          sync.Mutex
-	statusMu    sync.RWMutex
-	lastSync    time.Time
-	lastError   string
-	isSyncing   bool
-	cachedFeed  []feed.Item
-	feedUpdated time.Time
-	qbitVersion string
-	qbitOnline  bool
+	cfg          *config.Config
+	feedClient   *feed.Client
+	qbitClient   *qbit.Client
+	sizeResolver *feed.SizeResolver
+	log          *logger.Logger
+	mu           sync.Mutex
+	statusMu     sync.RWMutex
+	lastSync     time.Time
+	lastError    string
+	isSyncing    bool
+	cachedFeed   []feed.Item
+	feedUpdated  time.Time
+	qbitVersion  string
+	qbitOnline   bool
 }
 
 func New(cfg *config.Config, feedClient *feed.Client, qbitClient *qbit.Client, log *logger.Logger) *Syncer {
 	return &Syncer{
-		cfg:        cfg,
-		feedClient: feedClient,
-		qbitClient: qbitClient,
-		log:        log,
+		cfg:          cfg,
+		feedClient:   feedClient,
+		qbitClient:   qbitClient,
+		sizeResolver: feed.NewSizeResolver(),
+		log:          log,
 	}
 }
 
@@ -92,6 +94,12 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 			item.SourceFeedName = feedName
 			item.FeedPriority = feedPriority
 
+			if item.Size > 0 {
+				s.sizeResolver.SetCached(item.TorrentURL, item.Size)
+			} else if cachedSize, found := s.sizeResolver.GetCached(item.TorrentURL); found && cachedSize > 0 {
+				item.Size = cachedSize
+			}
+
 			key := item.GUID
 			if key == "" {
 				key = item.TorrentURL
@@ -104,6 +112,9 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 				// The torrent is present across multiple feeds!
 				allItems[existingIdx].HasFeedDuplicate = true
 				allItems[existingIdx].OtherFeedSources = append(allItems[existingIdx].OtherFeedSources, feedName)
+				if allItems[existingIdx].Size == 0 && item.Size > 0 {
+					allItems[existingIdx].Size = item.Size
+				}
 			} else {
 				itemIndexMap[key] = len(allItems)
 				allItems = append(allItems, item)
@@ -120,7 +131,35 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 	s.feedUpdated = time.Now()
 	s.statusMu.Unlock()
 
+	// Queue background resolution for missing sizes
+	var pendingURLs []string
+	for _, item := range allItems {
+		if item.Size == 0 && (strings.HasPrefix(item.TorrentURL, "http://") || strings.HasPrefix(item.TorrentURL, "https://")) {
+			pendingURLs = append(pendingURLs, item.TorrentURL)
+		}
+	}
+	if len(pendingURLs) > 0 {
+		go s.resolveSizesInBackground(pendingURLs)
+	}
+
 	return allItems, nil
+}
+
+func (s *Syncer) resolveSizesInBackground(urls []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	s.sizeResolver.ResolveAsync(ctx, urls, func(torrentURL string, size int64) {
+		if size <= 0 {
+			return
+		}
+		s.statusMu.Lock()
+		for i := range s.cachedFeed {
+			if s.cachedFeed[i].TorrentURL == torrentURL {
+				s.cachedFeed[i].Size = size
+			}
+		}
+		s.statusMu.Unlock()
+	})
 }
 
 func (s *Syncer) GetFeedInfos(ctx context.Context) []FeedInfo {
@@ -235,6 +274,26 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 		s.statusMu.Unlock()
 		return err
 	}
+
+	// Cross-populate sizes from active qBittorrent torrents into cached feed
+	s.statusMu.Lock()
+	for i := range s.cachedFeed {
+		if s.cachedFeed[i].Size > 0 {
+			continue
+		}
+		expName := s.cachedFeed[i].ExpectedName
+		if expName == "" {
+			expName = feed.ExtractFilenameFromURL(s.cachedFeed[i].TorrentURL)
+		}
+		for _, t := range activeTorrents {
+			if t.Size > 0 && feed.IsTorrentMatching(t.Name, expName) {
+				s.cachedFeed[i].Size = t.Size
+				s.sizeResolver.SetCached(s.cachedFeed[i].TorrentURL, t.Size)
+				break
+			}
+		}
+	}
+	s.statusMu.Unlock()
 
 	// 4. Process each enabled target rule
 	for key, rule := range c.Rules {

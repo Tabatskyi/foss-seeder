@@ -135,3 +135,52 @@ func TestExtractTorrentURL(t *testing.T) {
 		t.Errorf("expected %s, got %s", expectedAc, url)
 	}
 }
+
+func TestExtractSize(t *testing.T) {
+	// Custom field <size>
+	item1 := &gofeed.Item{
+		Custom: map[string]string{
+			"size": "71000122956",
+		},
+	}
+	if sz := extractSize(item1); sz != 71000122956 {
+		t.Errorf("expected 71000122956, got %d", sz)
+	}
+
+	// Enclosure length
+	item2 := &gofeed.Item{
+		Enclosures: []*gofeed.Enclosure{
+			{Length: "4294967296"},
+		},
+	}
+	if sz := extractSize(item2); sz != 4294967296 {
+		t.Errorf("expected 4294967296, got %d", sz)
+	}
+
+	// Description parsing
+	item3 := &gofeed.Item{
+		Description: "Latest ISO release for x86_64. Size: 2.5 GB. Enjoy!",
+	}
+	if sz := extractSize(item3); sz != int64(2.5*1024*1024*1024) {
+		t.Errorf("expected %d, got %d", int64(2.5*1024*1024*1024), sz)
+	}
+}
+
+func TestParseSizeFromText(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"File Size: 1.5 GB", int64(1.5 * 1024 * 1024 * 1024)},
+		{"Download length: 700 MB", 700 * 1024 * 1024},
+		{"Size: 50 GiB", 50 * 1024 * 1024 * 1024},
+		{"No size here", 0},
+	}
+
+	for _, tt := range tests {
+		got := parseSizeFromText(tt.input)
+		if got != tt.expected {
+			t.Errorf("parseSizeFromText(%q) = %d, want %d", tt.input, got, tt.expected)
+		}
+	}
+}
