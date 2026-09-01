@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"foss-seeder/internal/config"
+	"foss-seeder/internal/feed"
 )
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
@@ -47,7 +48,11 @@ func (s *Server) renderWithOOB(w http.ResponseWriter, name string, data any) {
 	buf.WriteString(oobHTML)
 
 	// Append OOB tab badges
-	_ = s.templates.ExecuteTemplate(&buf, "tab_badges.html", status)
+	feedInfos := s.syncer.GetFeedInfos(context.Background())
+	_ = s.templates.ExecuteTemplate(&buf, "tab_badges.html", map[string]any{
+		"Status":    status,
+		"FeedInfos": feedInfos,
+	})
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = buf.WriteTo(w)
@@ -57,17 +62,20 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	cfg := s.cfg.Get()
 	status := s.syncer.Status()
+	feedInfos := s.syncer.GetFeedInfos(ctx)
 
-	feedData, _ := s.buildFeedData(ctx, "", false)
+	feedData, _ := s.buildFeedData(ctx, "", "", false)
 
 	torrents, _ := s.qbit.GetTorrents(ctx, cfg.QbitCategory)
 
 	data := IndexData{
-		Config:   cfg,
-		Status:   status,
-		FeedData: feedData,
+		Config:    cfg,
+		Status:    status,
+		FeedInfos: feedInfos,
+		FeedData:  feedData,
 		RulesData: RulesData{
-			Rules: cfg.Rules,
+			Rules:     cfg.Rules,
+			FeedInfos: feedInfos,
 		},
 		TorrentsData: TorrentsData{
 			Category: cfg.QbitCategory,
@@ -80,29 +88,47 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePartialStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	status := s.syncer.Status()
-	s.render(w, "status_bar.html", map[string]any{
+	feedInfos := s.syncer.GetFeedInfos(ctx)
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "status_bar.html", map[string]any{
 		"Status": status,
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = s.templates.ExecuteTemplate(&buf, "tab_badges.html", map[string]any{
+		"Status":    status,
+		"FeedInfos": feedInfos,
 	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
 }
 
 func (s *Server) handlePartialFeed(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
+	feedURL := r.URL.Query().Get("feed_url")
+	if feedURL == "" {
+		feedURL = r.URL.Query().Get("feed_filter")
+	}
 	refresh := r.URL.Query().Get("refresh") == "true"
 
-	feedData, err := s.buildFeedData(r.Context(), query, refresh)
+	feedData, err := s.buildFeedData(r.Context(), query, feedURL, refresh)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error loading feed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	s.render(w, "feed_list.html", feedData)
+	s.renderWithOOB(w, "feed_list.html", feedData)
 }
 
 func (s *Server) handlePartialRules(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
-	s.render(w, "rules_list.html", RulesData{
-		Rules: cfg.Rules,
+	feedInfos := s.syncer.GetFeedInfos(r.Context())
+	s.renderWithOOB(w, "rules_list.html", RulesData{
+		Rules:     cfg.Rules,
+		FeedInfos: feedInfos,
 	})
 }
 
@@ -111,7 +137,7 @@ func (s *Server) handlePartialTorrents(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
 	torrents, _ := s.qbit.GetTorrents(ctx, cfg.QbitCategory)
 
-	s.render(w, "torrents_list.html", TorrentsData{
+	s.renderWithOOB(w, "torrents_list.html", TorrentsData{
 		Category: cfg.QbitCategory,
 		Torrents: torrents,
 	})
@@ -146,11 +172,16 @@ func (s *Server) handleToggleRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.Contains(r.Header.Get("HX-Target"), "feed") || query != "" || !strings.Contains(referer, "rules") {
-		feedData, _ := s.buildFeedData(r.Context(), query, false)
+		feedURL := r.URL.Query().Get("feed_url")
+		if feedURL == "" {
+			feedURL = r.FormValue("feed_url")
+		}
+		feedData, _ := s.buildFeedData(r.Context(), query, feedURL, false)
 		s.renderWithOOB(w, "feed_list.html", feedData)
 	} else {
 		cfg := s.cfg.Get()
-		s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules})
+		feedInfos := s.syncer.GetFeedInfos(r.Context())
+		s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules, FeedInfos: feedInfos})
 	}
 }
 
@@ -165,6 +196,7 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 	regexStr := strings.TrimSpace(r.FormValue("title_regex"))
 	savePath := strings.TrimSpace(r.FormValue("save_path"))
 	autoPurge := r.FormValue("auto_purge") == "true"
+	feedURL := strings.TrimSpace(r.FormValue("feed_url"))
 
 	if key == "" || regexStr == "" {
 		http.Error(w, "Key and Regex Pattern are required", http.StatusBadRequest)
@@ -188,13 +220,15 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 		Enabled:    true,
 		SavePath:   savePath,
 		AutoPurge:  autoPurge,
+		FeedURL:    feedURL,
 	}
 
 	_ = s.cfg.SetRule(rule)
 	s.log.Success("Added new rule '%s' (%s)", name, key)
 
 	cfg := s.cfg.Get()
-	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules})
+	feedInfos := s.syncer.GetFeedInfos(r.Context())
+	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules, FeedInfos: feedInfos})
 }
 
 func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
@@ -209,6 +243,7 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	feedURL := strings.TrimSpace(r.FormValue("feed_url"))
 	displayName := cleanDisplayName(title)
 	if displayName == "" {
 		displayName = title
@@ -222,13 +257,19 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 		TitleRegex: regexPattern,
 		Enabled:    true,
 		AutoPurge:  true,
+		FeedURL:    feedURL,
 	}
 
 	_ = s.cfg.SetRule(rule)
-	s.log.Success("Auto-created and tracked rule '%s' [key: %s, regex: %s]", displayName, slug, regexPattern)
+	if feedURL != "" {
+		s.log.Success("Auto-created and tracked rule '%s' tied to %s [key: %s, regex: %s]", displayName, feed.FeedDisplayName(feedURL), slug, regexPattern)
+	} else {
+		s.log.Success("Auto-created and tracked rule '%s' [key: %s, regex: %s]", displayName, slug, regexPattern)
+	}
 
 	query := r.FormValue("q")
-	feedData, _ := s.buildFeedData(r.Context(), query, false)
+	selectedFeed := r.FormValue("selected_feed")
+	feedData, _ := s.buildFeedData(r.Context(), query, selectedFeed, false)
 	s.renderWithOOB(w, "feed_list.html", feedData)
 }
 
@@ -244,7 +285,8 @@ func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := s.cfg.Get()
-	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules})
+	feedInfos := s.syncer.GetFeedInfos(r.Context())
+	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules, FeedInfos: feedInfos})
 }
 
 func (s *Server) handleDeleteTorrent(w http.ResponseWriter, r *http.Request) {
@@ -269,6 +311,12 @@ func (s *Server) handleDeleteTorrent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleToggleSeparateFeedTabs(w http.ResponseWriter, r *http.Request) {
+	_, _ = s.cfg.ToggleSeparateFeedTabs()
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -280,17 +328,36 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	qbitPass := strings.TrimSpace(r.FormValue("qbit_pass"))
 	qbitCategory := strings.TrimSpace(r.FormValue("qbit_category"))
 	savePath := strings.TrimSpace(r.FormValue("save_path"))
-	feedURL := strings.TrimSpace(r.FormValue("feed_url"))
+
+	feedURLsRaw := r.FormValue("feed_urls")
+	if feedURLsRaw == "" {
+		feedURLsRaw = r.FormValue("feed_url")
+	}
+	rawLines := strings.FieldsFunc(feedURLsRaw, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ','
+	})
+	var feedURLs []string
+	for _, l := range rawLines {
+		if trimmed := strings.TrimSpace(l); trimmed != "" {
+			feedURLs = append(feedURLs, trimmed)
+		}
+	}
+
 	interval, _ := strconv.Atoi(r.FormValue("check_interval"))
 	seqDl := r.FormValue("sequential_download") == "true"
+	separateFeedTabs := r.FormValue("separate_feed_tabs") == "true"
 
-	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURL, interval, seqDl)
+	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURLs, interval, seqDl, separateFeedTabs)
 	if err != nil {
 		s.log.Error("Failed to save settings: %v", err)
 	} else {
 		s.log.Success("Settings updated successfully")
 	}
 
+	// If tab separation changed, refresh page
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Refresh", "true")
+	}
 	s.handlePartialStatus(w, r)
 }
 

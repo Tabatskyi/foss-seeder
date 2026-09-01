@@ -11,8 +11,20 @@ Written in **Go** with embedded **HTML templates + HTMX** — compiles into a si
 * **Distro & Software Selector**:
   * Live catalog browser connected to `fosstorrents.com`.
   * Instant search and filtering by distro name, software, or architecture (e.g. `arch`, `debian`, `x86_64`, `aarch64`).
+* **Multi-Feed RSS Aggregation & Selector**:
+  * Support for multiple concurrent RSS feeds (e.g. `fosstorrents.com`, `distrowatch.com`, `academictorrents.com`, etc.).
+  * Instant search and architecture filtering (e.g. `arch`, `debian`, `x86_64`, `aarch64`).
+  * Filter releases by all feeds or by a specific source feed.
+  * Automatic cross-feed deduplication with top-to-bottom priority ordering (feeds listed higher in settings take priority when the same torrent exists across multiple feeds).
   * 1-click **Track Distro** to automatically create smart regex rules and queue downloads.
   * Direct `.torrent` file download buttons.
+* **Flexible View Modes (Unified vs. Dedicated Tabs)**:
+  * **Unified Distro Selector**: All releases aggregated in one view with a feed filter dropdown and source badges.
+  * **Separate Feed Tabs Mode**: Dedicated tabs for each configured feed (`📦 FOSSTorrents`, `📦 DistroWatch`, etc.) with independent counters.
+  * Quick toggle in settings or UI to switch between view modes.
+* **Feed-Tied & Global Rules**:
+  * Automatically tie rules to their source feed or configure rules to match across all feeds.
+  * Dedicated "Source Feed" indicators in the Tracked Rules management table.
 * **Auto-Purge Obsolete Versions**:
   * Automatically detects when a newer ISO version of a tracked family is released, adds the new version to qBittorrent, and purges older releases to save disk space.
 * **qBittorrent Integration**:
@@ -44,6 +56,7 @@ Open your browser at:
 | :--- | :--- | :--- |
 | `PORT` | `7474` | Web UI HTTP listening port |
 | `FEED_URL` | `https://fosstorrents.com/feed/torrents.xml` | RSS feed endpoint |
+| `FEED_URL` | `https://fosstorrents.com/feed/torrents.xml` | RSS feed endpoint(s) — supports multiple comma or newline-separated URLs |
 | `QBIT_HOST` | `http://localhost:8800` | qBittorrent Web UI host URL |
 | `QBIT_USER` | `admin` | qBittorrent username |
 | `QBIT_PASS` | `adminadmin` | qBittorrent password |
@@ -84,6 +97,11 @@ PORT=7474 ../bin/foss-seeder
 - Add available space on disk to the UI.
 - Add support for additional torrent clients (e.g. Transmission, Deluge, etc.).
 - Replace Emojis with SVG icons for better cross-platform compatibility.
+- [x] Add multi-feed RSS support for additional FOSS distros and software sources.
+- [ ] Add size preview for ISOs.
+- [ ] Add available space on disk to the UI.
+- [ ] Add support for additional torrent clients (e.g. Transmission, Deluge, etc.).
+- [ ] Replace Emojis with SVG icons for better cross-platform compatibility.
 
 --- 
 

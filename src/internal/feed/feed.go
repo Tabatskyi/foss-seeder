@@ -12,13 +12,57 @@ import (
 )
 
 type Item struct {
-	Title        string    `json:"title"`
-	TorrentURL   string    `json:"torrent_url"`
-	Description  string    `json:"description"`
-	GUID         string    `json:"guid"`
-	Published    string    `json:"published"`
-	PublishedAt  time.Time `json:"published_at"`
-	ExpectedName string    `json:"expected_name"`
+	Title            string    `json:"title"`
+	TorrentURL       string    `json:"torrent_url"`
+	Description      string    `json:"description"`
+	GUID             string    `json:"guid"`
+	Published        string    `json:"published"`
+	PublishedAt      time.Time `json:"published_at"`
+	ExpectedName     string    `json:"expected_name"`
+	SourceFeedURL    string    `json:"source_feed_url"`
+	SourceFeedName   string    `json:"source_feed_name"`
+	FeedPriority     int       `json:"feed_priority"`
+	HasFeedDuplicate bool      `json:"has_feed_duplicate"`
+	OtherFeedSources []string  `json:"other_feed_sources,omitempty"`
+}
+
+func FeedDisplayName(feedURL string) string {
+	u, err := url.Parse(feedURL)
+	if err != nil || u.Host == "" {
+		if feedURL == "" {
+			return "All Feeds"
+		}
+		return feedURL
+	}
+	host := strings.ToLower(u.Host)
+	if strings.Contains(host, "fosstorrents") {
+		return "FOSSTorrents"
+	}
+	if strings.Contains(host, "distrowatch") {
+		return "DistroWatch"
+	}
+	if strings.Contains(host, "academictorrents") {
+		return "Academic Torrents"
+	}
+	if strings.Contains(host, "linuxtracker") {
+		return "LinuxTracker"
+	}
+	clean := strings.TrimPrefix(host, "www.")
+	return clean
+}
+
+type userAgentTransport struct {
+	rt http.RoundTripper
+}
+
+func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 FOSSSeeder/1.0")
+	}
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, text/html, */*")
+	}
+	return t.rt.RoundTrip(req)
 }
 
 type Client struct {
@@ -29,7 +73,8 @@ type Client struct {
 func NewClient() *Client {
 	fp := gofeed.NewParser()
 	fp.Client = &http.Client{
-		Timeout: 20 * time.Second,
+		Timeout:   25 * time.Second,
+		Transport: &userAgentTransport{rt: http.DefaultTransport},
 	}
 	return &Client{
 		httpClient: fp.Client,
@@ -77,6 +122,7 @@ func extractTorrentURL(entry *gofeed.Item) string {
 		return ""
 	}
 
+	// 1. Check enclosure tags
 	for _, enc := range entry.Enclosures {
 		if enc == nil {
 			continue
@@ -88,6 +134,18 @@ func extractTorrentURL(entry *gofeed.Item) string {
 		}
 	}
 
+	// 2. Check AcademicTorrents details page link format
+	if strings.Contains(entry.Link, "academictorrents.com/details/") {
+		parts := strings.Split(entry.Link, "academictorrents.com/details/")
+		if len(parts) == 2 {
+			hash := strings.Trim(parts[1], "/")
+			if hash != "" {
+				return "https://academictorrents.com/download/" + hash + ".torrent"
+			}
+		}
+	}
+
+	// 3. Fallback to entry.Link
 	if entry.Link != "" {
 		return entry.Link
 	}

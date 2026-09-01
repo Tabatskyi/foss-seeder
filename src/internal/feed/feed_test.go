@@ -2,6 +2,8 @@ package feed
 
 import (
 	"testing"
+
+	"github.com/mmcdole/gofeed"
 )
 
 func TestExtractFilenameFromURL(t *testing.T) {
@@ -110,5 +112,26 @@ func TestIsSameFamily(t *testing.T) {
 		if got != tt.shouldMatch {
 			t.Errorf("IsSameFamily(%q, %q) = %v, want %v", tt.torrentName, tt.expectedName, got, tt.shouldMatch)
 		}
+	}
+}
+
+func TestExtractTorrentURL(t *testing.T) {
+	// 1. Enclosure test
+	item1 := &gofeed.Item{
+		Enclosures: []*gofeed.Enclosure{
+			{URL: "https://example.com/test.torrent", Type: "application/x-bittorrent"},
+		},
+	}
+	if url := extractTorrentURL(item1); url != "https://example.com/test.torrent" {
+		t.Errorf("expected enclosure URL, got %s", url)
+	}
+
+	// 2. AcademicTorrents details page link
+	item2 := &gofeed.Item{
+		Link: "https://academictorrents.com/details/dcb9178653b651c7ca4526e11fa8e22f74e2fd7a",
+	}
+	expectedAc := "https://academictorrents.com/download/dcb9178653b651c7ca4526e11fa8e22f74e2fd7a.torrent"
+	if url := extractTorrentURL(item2); url != expectedAc {
+		t.Errorf("expected %s, got %s", expectedAc, url)
 	}
 }

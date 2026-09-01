@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,13 @@ import (
 	"foss-seeder/internal/logger"
 	"foss-seeder/internal/qbit"
 )
+
+type FeedInfo struct {
+	URL      string `json:"url"`
+	Name     string `json:"name"`
+	Priority int    `json:"priority"`
+	Count    int    `json:"count"`
+}
 
 type Status struct {
 	LastSyncTime     time.Time `json:"last_sync_time"`
@@ -61,17 +69,83 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 	s.statusMu.RUnlock()
 
 	c := s.cfg.Get()
-	items, err := s.feedClient.Fetch(ctx, c.FeedURL)
-	if err != nil {
-		return nil, err
+	feedURLs := c.FeedURLs
+	if len(feedURLs) == 0 && c.FeedURL != "" {
+		feedURLs = []string{c.FeedURL}
+	}
+
+	var allItems []feed.Item
+	itemIndexMap := make(map[string]int)
+	var fetchErrors []string
+
+	for priorityIdx, u := range feedURLs {
+		items, err := s.feedClient.Fetch(ctx, u)
+		if err != nil {
+			s.log.Warn("Failed to fetch RSS feed (%s): %v", u, err)
+			fetchErrors = append(fetchErrors, fmt.Sprintf("%s: %v", u, err))
+			continue
+		}
+		feedName := feed.FeedDisplayName(u)
+		feedPriority := priorityIdx + 1
+		for _, item := range items {
+			item.SourceFeedURL = u
+			item.SourceFeedName = feedName
+			item.FeedPriority = feedPriority
+
+			key := item.GUID
+			if key == "" {
+				key = item.TorrentURL
+			}
+			if key == "" {
+				key = item.Title
+			}
+
+			if existingIdx, found := itemIndexMap[key]; found {
+				// The torrent is present across multiple feeds!
+				allItems[existingIdx].HasFeedDuplicate = true
+				allItems[existingIdx].OtherFeedSources = append(allItems[existingIdx].OtherFeedSources, feedName)
+			} else {
+				itemIndexMap[key] = len(allItems)
+				allItems = append(allItems, item)
+			}
+		}
+	}
+
+	if len(allItems) == 0 && len(fetchErrors) > 0 && len(fetchErrors) == len(feedURLs) {
+		return nil, fmt.Errorf("failed to fetch all feeds: %s", strings.Join(fetchErrors, "; "))
 	}
 
 	s.statusMu.Lock()
-	s.cachedFeed = items
+	s.cachedFeed = allItems
 	s.feedUpdated = time.Now()
 	s.statusMu.Unlock()
 
-	return items, nil
+	return allItems, nil
+}
+
+func (s *Syncer) GetFeedInfos(ctx context.Context) []FeedInfo {
+	c := s.cfg.Get()
+	feedURLs := c.FeedURLs
+	if len(feedURLs) == 0 && c.FeedURL != "" {
+		feedURLs = []string{c.FeedURL}
+	}
+
+	items, _ := s.GetCachedFeed(ctx, false)
+	counts := make(map[string]int)
+	for _, it := range items {
+		counts[it.SourceFeedURL]++
+	}
+
+	infos := make([]FeedInfo, len(feedURLs))
+	for i, u := range feedURLs {
+		infos[i] = FeedInfo{
+			URL:      u,
+			Name:     feed.FeedDisplayName(u),
+			Priority: i + 1,
+			Count:    counts[u],
+		}
+	}
+	return infos
 }
 
 func (s *Syncer) CheckQbitHealth(ctx context.Context) (bool, string) {
@@ -134,18 +208,22 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 
 	s.log.Success("Connected to qBittorrent (v%s) at %s", ver, c.QbitHost)
 
-	// 2. Fetch RSS feed
-	s.log.Info("Fetching RSS feed from: %s", c.FeedURL)
+	// 2. Fetch RSS feed(s)
+	feedURLs := c.FeedURLs
+	if len(feedURLs) == 0 && c.FeedURL != "" {
+		feedURLs = []string{c.FeedURL}
+	}
+	s.log.Info("Fetching RSS feeds (%d source(s)): %s", len(feedURLs), strings.Join(feedURLs, ", "))
 	feedItems, err := s.GetCachedFeed(ctx, true)
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to fetch feed: %v", err)
+		errMsg := fmt.Sprintf("Failed to fetch feeds: %v", err)
 		s.log.Error("%s", errMsg)
 		s.statusMu.Lock()
 		s.lastError = errMsg
 		s.statusMu.Unlock()
 		return err
 	}
-	s.log.Info("Fetched %d items from feed", len(feedItems))
+	s.log.Info("Fetched %d total items across %d feed(s)", len(feedItems), len(feedURLs))
 
 	// 3. Fetch active torrents from qBittorrent
 	activeTorrents, err := s.qbitClient.GetTorrents(ctx, c.QbitCategory)
@@ -172,6 +250,10 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 
 		var matchingItems []feed.Item
 		for _, item := range feedItems {
+			// If rule is tied to a specific feed, only match against that feed
+			if rule.FeedURL != "" && item.SourceFeedURL != "" && item.SourceFeedURL != rule.FeedURL {
+				continue
+			}
 			if pattern.MatchString(item.Title) && item.TorrentURL != "" {
 				matchingItems = append(matchingItems, item)
 			}

@@ -35,17 +35,26 @@
             <label class="form-label">Custom Save Path (Optional)</label>
             <input type="text" name="save_path" placeholder="Leave blank to use default save path" class="form-control" />
           </div>
-          <div class="form-group" style="justify-content: center;">
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; margin-top: 18px;">
-              <input type="checkbox" name="auto_purge" value="true" checked />
-              Auto-purge older obsolete versions
-            </label>
+          <div class="form-group">
+            <label class="form-label">Tied RSS Feed (Optional)</label>
+            <select name="feed_url" class="form-control">
+              <option value="">🌐 All Feeds (Any Source)</option>
+              {{range .FeedInfos}}
+                <option value="{{.URL}}">🏷️ {{.Name}} (Priority #{{.Priority}})</option>
+              {{end}}
+            </select>
           </div>
         </div>
 
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
-          <button type="button" class="btn btn-sm" onclick="document.getElementById('add-rule-card').style.display='none'">Cancel</button>
-          <button type="submit" class="btn btn-sm btn-primary">Save Rule</button>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" name="auto_purge" value="true" checked />
+            Auto-purge older obsolete versions
+          </label>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-sm" onclick="document.getElementById('add-rule-card').style.display='none'">Cancel</button>
+            <button type="submit" class="btn btn-sm btn-primary">Save Rule</button>
+          </div>
         </div>
       </form>
     </div>
@@ -61,8 +70,8 @@
             <tr>
               <th>Status</th>
               <th>Display Name</th>
+              <th>Source Feed</th>
               <th>Identifier (Tag)</th>
-              <th>Rule Identifier</th>
               <th>Regex Pattern</th>
               <th>Auto-Purge</th>
               <th style="text-align: right;">Actions</th>
@@ -84,6 +93,15 @@
                 </td>
                 <td style="font-weight: 600;">
                   {{$v.Name}}
+                </td>
+                <td>
+                  {{if $v.FeedURL}}
+                    <span class="badge badge-info" title="{{$v.FeedURL}}">
+                      🏷️ {{feedDisplayName $v.FeedURL}}
+                    </span>
+                  {{else}}
+                    <span class="badge badge-muted" title="Matches across all configured RSS feeds">🌐 All Feeds</span>
+                  {{end}}
                 </td>
                 <td>
                   <span class="badge badge-info">{{$v.Key}}</span>

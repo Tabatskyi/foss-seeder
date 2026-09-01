@@ -16,13 +16,16 @@ type TargetRule struct {
 	Enabled    bool   `json:"enabled"`
 	SavePath   string `json:"save_path,omitempty"`
 	AutoPurge  bool   `json:"auto_purge"`
+	FeedURL    string `json:"feed_url,omitempty"`
 }
 
 type Config struct {
 	mu sync.RWMutex `json:"-"`
 
 	Port                 string                `json:"port"`
-	FeedURL              string                `json:"feed_url"`
+	FeedURL              string                `json:"feed_url,omitempty"`
+	FeedURLs             []string              `json:"feed_urls"`
+	SeparateFeedTabs     bool                  `json:"separate_feed_tabs"`
 	QbitHost             string                `json:"qbit_host"`
 	QbitUser             string                `json:"qbit_user"`
 	QbitPass             string                `json:"qbit_pass"`
@@ -37,6 +40,24 @@ type Config struct {
 func getEnv(key, defaultVal string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
+	}
+	return defaultVal
+}
+
+func getEnvSlice(key string, defaultVal []string) []string {
+	if val := os.Getenv(key); val != "" {
+		parts := strings.FieldsFunc(val, func(r rune) bool {
+			return r == ',' || r == '\n' || r == ';'
+		})
+		var clean []string
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				clean = append(clean, trimmed)
+			}
+		}
+		if len(clean) > 0 {
+			return clean
+		}
 	}
 	return defaultVal
 }
@@ -73,10 +94,12 @@ func findConfigPath() string {
 
 func LoadConfig() *Config {
 	configPath := findConfigPath()
+	defaultFeeds := getEnvSlice("FEED_URL", []string{"https://fosstorrents.com/feed/torrents.xml"})
 
 	cfg := &Config{
 		Port:                 getEnv("PORT", "7474"),
-		FeedURL:              getEnv("FEED_URL", "https://fosstorrents.com/feed/torrents.xml"),
+		FeedURL:              defaultFeeds[0],
+		FeedURLs:             defaultFeeds,
 		QbitHost:             getEnv("QBIT_HOST", "http://127.0.0.1:8080"),
 		QbitUser:             getEnv("QBIT_USER", "admin"),
 		QbitPass:             getEnv("QBIT_PASS", "adminadmin"),
@@ -95,8 +118,16 @@ func LoadConfig() *Config {
 			if diskCfg.Port != "" {
 				cfg.Port = diskCfg.Port
 			}
-			if diskCfg.FeedURL != "" {
+			if len(diskCfg.FeedURLs) > 0 {
+				cfg.FeedURLs = diskCfg.FeedURLs
+				if diskCfg.FeedURL != "" {
+					cfg.FeedURL = diskCfg.FeedURL
+				} else {
+					cfg.FeedURL = diskCfg.FeedURLs[0]
+				}
+			} else if diskCfg.FeedURL != "" {
 				cfg.FeedURL = diskCfg.FeedURL
+				cfg.FeedURLs = []string{diskCfg.FeedURL}
 			}
 			if diskCfg.QbitHost != "" {
 				cfg.QbitHost = diskCfg.QbitHost
@@ -117,6 +148,7 @@ func LoadConfig() *Config {
 				cfg.CheckIntervalSeconds = diskCfg.CheckIntervalSeconds
 			}
 			cfg.SequentialDownload = diskCfg.SequentialDownload
+			cfg.SeparateFeedTabs = diskCfg.SeparateFeedTabs
 			if diskCfg.Rules != nil {
 				cfg.Rules = diskCfg.Rules
 			}
@@ -157,9 +189,14 @@ func (c *Config) Get() Config {
 		rulesCopy[k] = v
 	}
 
+	feedURLsCopy := make([]string, len(c.FeedURLs))
+	copy(feedURLsCopy, c.FeedURLs)
+
 	return Config{
 		Port:                 c.Port,
 		FeedURL:              c.FeedURL,
+		FeedURLs:             feedURLsCopy,
+		SeparateFeedTabs:     c.SeparateFeedTabs,
 		QbitHost:             c.QbitHost,
 		QbitUser:             c.QbitUser,
 		QbitPass:             c.QbitPass,
@@ -172,7 +209,7 @@ func (c *Config) Get() Config {
 	}
 }
 
-func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath, feedURL string, interval int, seqDl bool) error {
+func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath string, feedURLs []string, interval int, seqDl, separateFeedTabs bool) error {
 	c.mu.Lock()
 	c.QbitHost = qbitHost
 	c.QbitUser = qbitUser
@@ -181,14 +218,37 @@ func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath
 	}
 	c.QbitCategory = category
 	c.SavePath = savePath
-	c.FeedURL = feedURL
+
+	var clean []string
+	for _, u := range feedURLs {
+		trimmed := strings.TrimSpace(u)
+		if trimmed != "" {
+			clean = append(clean, trimmed)
+		}
+	}
+	if len(clean) > 0 {
+		c.FeedURLs = clean
+		c.FeedURL = clean[0]
+	}
+
 	if interval > 0 {
 		c.CheckIntervalSeconds = interval
 	}
 	c.SequentialDownload = seqDl
+	c.SeparateFeedTabs = separateFeedTabs
 	c.mu.Unlock()
 
 	return c.Save()
+}
+
+func (c *Config) ToggleSeparateFeedTabs() (bool, error) {
+	c.mu.Lock()
+	c.SeparateFeedTabs = !c.SeparateFeedTabs
+	newState := c.SeparateFeedTabs
+	c.mu.Unlock()
+
+	err := c.Save()
+	return newState, err
 }
 
 func (c *Config) SetRule(rule TargetRule) error {

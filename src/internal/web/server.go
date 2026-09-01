@@ -37,12 +37,16 @@ type FeedItemView struct {
 }
 
 type FeedData struct {
-	Query string
-	Items []FeedItemView
+	Query            string
+	SelectedFeed     string
+	FeedInfos        []syncer.FeedInfo
+	SeparateFeedTabs bool
+	Items            []FeedItemView
 }
 
 type RulesData struct {
-	Rules map[string]config.TargetRule
+	Rules     map[string]config.TargetRule
+	FeedInfos []syncer.FeedInfo
 }
 
 type TorrentsData struct {
@@ -53,6 +57,7 @@ type TorrentsData struct {
 type IndexData struct {
 	Config       config.Config
 	Status       syncer.Status
+	FeedInfos    []syncer.FeedInfo
 	FeedData     FeedData
 	RulesData    RulesData
 	TorrentsData TorrentsData
@@ -76,6 +81,9 @@ func NewServer(cfg *config.Config, s *syncer.Syncer, q *qbit.Client, l *logger.L
 		"multiply": func(a, b float64) float64 {
 			return a * b
 		},
+		"feedDisplayName": feed.FeedDisplayName,
+		"sub":             func(a, b int) int { return a - b },
+		"add":             func(a, b int) int { return a + b },
 	}
 
 	tmpl, err := template.New("").Funcs(tmplFuncs).ParseFS(webassets.Assets, "templates/*.html", "templates/partials/*.html")
@@ -123,6 +131,7 @@ func (s *Server) setupRoutes() {
 	r.Post("/api/rules/delete", s.handleDeleteRule)
 	r.Post("/api/torrents/delete", s.handleDeleteTorrent)
 	r.Post("/api/settings", s.handleSaveSettings)
+	r.Post("/api/settings/toggle-tabs", s.handleToggleSeparateFeedTabs)
 	r.Post("/api/qbit/test", s.handleTestQbitConnection)
 	r.Get("/api/logs/stream", s.handleLogStream)
 
@@ -133,24 +142,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
 
-func (s *Server) buildFeedData(ctx context.Context, query string, forceRefresh bool) (FeedData, error) {
+func (s *Server) buildFeedData(ctx context.Context, query string, selectedFeed string, forceRefresh bool) (FeedData, error) {
 	feedItems, err := s.syncer.GetCachedFeed(ctx, forceRefresh)
 	if err != nil {
-		return FeedData{Query: query}, err
+		return FeedData{Query: query, SelectedFeed: selectedFeed}, err
 	}
 
 	cfg := s.cfg.Get()
+	feedInfos := s.syncer.GetFeedInfos(ctx)
 
 	// Compile active regexes
 	type rulePattern struct {
 		key     string
+		feedURL string
 		enabled bool
 		regex   *regexp.Regexp
 	}
 	patterns := make([]rulePattern, 0, len(cfg.Rules))
 	for k, r := range cfg.Rules {
 		if p, err := regexp.Compile("(?i)" + r.TitleRegex); err == nil {
-			patterns = append(patterns, rulePattern{key: k, enabled: r.Enabled, regex: p})
+			patterns = append(patterns, rulePattern{key: k, feedURL: r.FeedURL, enabled: r.Enabled, regex: p})
 		}
 	}
 
@@ -158,12 +169,21 @@ func (s *Server) buildFeedData(ctx context.Context, query string, forceRefresh b
 	var items []FeedItemView
 
 	for _, item := range feedItems {
+		// Filter by feed if selected
+		if selectedFeed != "" && selectedFeed != "all" && item.SourceFeedURL != selectedFeed {
+			continue
+		}
+
 		if qLower != "" && !strings.Contains(strings.ToLower(item.Title), qLower) && !strings.Contains(strings.ToLower(item.Description), qLower) {
 			continue
 		}
 
 		view := FeedItemView{Item: item}
 		for _, rp := range patterns {
+			// If rule is tied to a feed, only mark tracked if item is from that feed
+			if rp.feedURL != "" && item.SourceFeedURL != "" && item.SourceFeedURL != rp.feedURL {
+				continue
+			}
 			if rp.regex.MatchString(item.Title) {
 				view.IsTracked = true
 				view.MatchingRuleKey = rp.key
@@ -176,7 +196,10 @@ func (s *Server) buildFeedData(ctx context.Context, query string, forceRefresh b
 	}
 
 	return FeedData{
-		Query: query,
-		Items: items,
+		Query:            query,
+		SelectedFeed:     selectedFeed,
+		FeedInfos:        feedInfos,
+		SeparateFeedTabs: cfg.SeparateFeedTabs,
+		Items:            items,
 	}, nil
 }
