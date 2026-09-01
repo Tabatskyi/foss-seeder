@@ -21,6 +21,20 @@ type Item struct {
 	ExpectedName string    `json:"expected_name"`
 }
 
+type userAgentTransport struct {
+	rt http.RoundTripper
+}
+
+func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 FOSSSeeder/1.0")
+	}
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, text/html, */*")
+	}
+	return t.rt.RoundTrip(req)
+}
+
 type Client struct {
 	httpClient *http.Client
 	parser     *gofeed.Parser
@@ -29,7 +43,8 @@ type Client struct {
 func NewClient() *Client {
 	fp := gofeed.NewParser()
 	fp.Client = &http.Client{
-		Timeout: 20 * time.Second,
+		Timeout:   25 * time.Second,
+		Transport: &userAgentTransport{rt: http.DefaultTransport},
 	}
 	return &Client{
 		httpClient: fp.Client,
@@ -77,6 +92,7 @@ func extractTorrentURL(entry *gofeed.Item) string {
 		return ""
 	}
 
+	// 1. Check enclosure tags
 	for _, enc := range entry.Enclosures {
 		if enc == nil {
 			continue
@@ -88,6 +104,18 @@ func extractTorrentURL(entry *gofeed.Item) string {
 		}
 	}
 
+	// 2. Check AcademicTorrents details page link format
+	if strings.Contains(entry.Link, "academictorrents.com/details/") {
+		parts := strings.Split(entry.Link, "academictorrents.com/details/")
+		if len(parts) == 2 {
+			hash := strings.Trim(parts[1], "/")
+			if hash != "" {
+				return "https://academictorrents.com/download/" + hash + ".torrent"
+			}
+		}
+	}
+
+	// 3. Fallback to entry.Link
 	if entry.Link != "" {
 		return entry.Link
 	}
