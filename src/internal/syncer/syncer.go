@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,17 +62,47 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 	s.statusMu.RUnlock()
 
 	c := s.cfg.Get()
-	items, err := s.feedClient.Fetch(ctx, c.FeedURL)
-	if err != nil {
-		return nil, err
+	feedURLs := c.FeedURLs
+	if len(feedURLs) == 0 && c.FeedURL != "" {
+		feedURLs = []string{c.FeedURL}
+	}
+
+	var allItems []feed.Item
+	seen := make(map[string]bool)
+	var fetchErrors []string
+
+	for _, u := range feedURLs {
+		items, err := s.feedClient.Fetch(ctx, u)
+		if err != nil {
+			s.log.Warn("Failed to fetch RSS feed (%s): %v", u, err)
+			fetchErrors = append(fetchErrors, fmt.Sprintf("%s: %v", u, err))
+			continue
+		}
+		for _, item := range items {
+			key := item.GUID
+			if key == "" {
+				key = item.TorrentURL
+			}
+			if key == "" {
+				key = item.Title
+			}
+			if !seen[key] {
+				seen[key] = true
+				allItems = append(allItems, item)
+			}
+		}
+	}
+
+	if len(allItems) == 0 && len(fetchErrors) > 0 && len(fetchErrors) == len(feedURLs) {
+		return nil, fmt.Errorf("failed to fetch all feeds: %s", strings.Join(fetchErrors, "; "))
 	}
 
 	s.statusMu.Lock()
-	s.cachedFeed = items
+	s.cachedFeed = allItems
 	s.feedUpdated = time.Now()
 	s.statusMu.Unlock()
 
-	return items, nil
+	return allItems, nil
 }
 
 func (s *Syncer) CheckQbitHealth(ctx context.Context) (bool, string) {
@@ -134,18 +165,22 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 
 	s.log.Success("Connected to qBittorrent (v%s) at %s", ver, c.QbitHost)
 
-	// 2. Fetch RSS feed
-	s.log.Info("Fetching RSS feed from: %s", c.FeedURL)
+	// 2. Fetch RSS feed(s)
+	feedURLs := c.FeedURLs
+	if len(feedURLs) == 0 && c.FeedURL != "" {
+		feedURLs = []string{c.FeedURL}
+	}
+	s.log.Info("Fetching RSS feeds (%d source(s)): %s", len(feedURLs), strings.Join(feedURLs, ", "))
 	feedItems, err := s.GetCachedFeed(ctx, true)
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to fetch feed: %v", err)
+		errMsg := fmt.Sprintf("Failed to fetch feeds: %v", err)
 		s.log.Error("%s", errMsg)
 		s.statusMu.Lock()
 		s.lastError = errMsg
 		s.statusMu.Unlock()
 		return err
 	}
-	s.log.Info("Fetched %d items from feed", len(feedItems))
+	s.log.Info("Fetched %d total items across %d feed(s)", len(feedItems), len(feedURLs))
 
 	// 3. Fetch active torrents from qBittorrent
 	activeTorrents, err := s.qbitClient.GetTorrents(ctx, c.QbitCategory)

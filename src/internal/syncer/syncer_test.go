@@ -1,10 +1,17 @@
 package syncer
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"regexp"
 	"testing"
 
+	"foss-seeder/internal/config"
 	"foss-seeder/internal/feed"
+	"foss-seeder/internal/logger"
+	"foss-seeder/internal/qbit"
 )
 
 func TestRegexFamilyMatching(t *testing.T) {
@@ -76,5 +83,70 @@ func TestObsoleteDetection(t *testing.T) {
 
 	if feed.IsTorrentMatching(oldTorrentName, expectedName) != false {
 		t.Errorf("expected old torrent NOT to match latest, indicating it should be purged")
+	}
+}
+
+func TestMultiFeedFetchAndDeduplication(t *testing.T) {
+	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Feed 1</title>
+    <item>
+      <title>Distro A v1.0</title>
+      <guid>guid-a-1</guid>
+      <enclosure url="https://example.com/distro-a.torrent" type="application/x-bittorrent"/>
+    </item>
+    <item>
+      <title>Distro B v1.0</title>
+      <guid>guid-b-1</guid>
+      <enclosure url="https://example.com/distro-b.torrent" type="application/x-bittorrent"/>
+    </item>
+  </channel>
+</rss>`))
+	}))
+	defer ts1.Close()
+
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Feed 2</title>
+    <item>
+      <title>Distro B v1.0</title>
+      <guid>guid-b-1</guid>
+      <enclosure url="https://example.com/distro-b.torrent" type="application/x-bittorrent"/>
+    </item>
+    <item>
+      <title>Distro C v1.0</title>
+      <guid>guid-c-1</guid>
+      <enclosure url="https://example.com/distro-c.torrent" type="application/x-bittorrent"/>
+    </item>
+  </channel>
+</rss>`))
+	}))
+	defer ts2.Close()
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	cfg := config.LoadConfig()
+	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{ts1.URL, ts2.URL}, 600, true)
+
+	log := logger.New(200)
+	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
+	syncer := New(cfg, feed.NewClient(), qClient, log)
+
+	items, err := syncer.GetCachedFeed(context.Background(), true)
+	if err != nil {
+		t.Fatalf("unexpected error fetching feeds: %v", err)
+	}
+
+	// Should aggregate Distro A, Distro B, Distro C (total 3 unique items)
+	if len(items) != 3 {
+		t.Fatalf("expected 3 aggregated items, got %d", len(items))
 	}
 }

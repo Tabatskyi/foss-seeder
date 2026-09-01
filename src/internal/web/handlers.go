@@ -280,11 +280,25 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	qbitPass := strings.TrimSpace(r.FormValue("qbit_pass"))
 	qbitCategory := strings.TrimSpace(r.FormValue("qbit_category"))
 	savePath := strings.TrimSpace(r.FormValue("save_path"))
-	feedURL := strings.TrimSpace(r.FormValue("feed_url"))
+
+	feedURLsRaw := r.FormValue("feed_urls")
+	if feedURLsRaw == "" {
+		feedURLsRaw = r.FormValue("feed_url")
+	}
+	rawLines := strings.FieldsFunc(feedURLsRaw, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ','
+	})
+	var feedURLs []string
+	for _, l := range rawLines {
+		if trimmed := strings.TrimSpace(l); trimmed != "" {
+			feedURLs = append(feedURLs, trimmed)
+		}
+	}
+
 	interval, _ := strconv.Atoi(r.FormValue("check_interval"))
 	seqDl := r.FormValue("sequential_download") == "true"
 
-	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURL, interval, seqDl)
+	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURLs, interval, seqDl)
 	if err != nil {
 		s.log.Error("Failed to save settings: %v", err)
 	} else {
