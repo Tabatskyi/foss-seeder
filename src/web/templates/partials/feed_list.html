@@ -50,9 +50,38 @@
     </button>
   </div>
 
-  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
-    Showing {{len .Items}} releases{{if .SelectedFeed}} from <strong>{{feedDisplayName .SelectedFeed}}</strong>{{else}} across RSS feeds{{end}}
-    {{if .Query}} matching "<strong>{{.Query}}</strong>"{{end}}
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; padding: 4px 2px;">
+    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary);">
+      <span>
+        Showing <strong>{{len .Items}}</strong> releases{{if .SelectedFeed}} from <strong>{{feedDisplayName .SelectedFeed}}</strong>{{else}} across RSS feeds{{end}}{{if .Query}} matching "<strong>{{.Query}}</strong>"{{end}}
+      </span>
+      {{if gt .TotalSize 0}}
+        <span class="badge badge-info" style="font-size: 12px; padding: 4px 10px; font-weight: 600;" title="Total payload size of shown releases">
+          💾 Total Size: {{formatBytes .TotalSize}}
+        </span>
+      {{end}}
+    </div>
+
+    {{if gt (len .Items) 0}}
+      <div style="display: flex; align-items: center; gap: 8px;">
+        {{if gt .UntrackedCount 0}}
+          <button 
+            class="btn btn-primary btn-sm"
+            hx-post="/api/feed/track-all"
+            hx-target="#feed-container"
+            hx-include="[name='q'], [name='feed_filter'], [name='feed_url']"
+            hx-confirm="Track and queue all {{.UntrackedCount}} untracked releases in qBittorrent?"
+            title="Create tracking rules and queue all shown untracked releases in qBittorrent"
+          >
+            + Track All ({{.UntrackedCount}})
+          </button>
+        {{else}}
+          <span class="badge badge-success" style="font-size: 11px; padding: 6px 12px;">
+            ✓ All {{len .Items}} Tracked
+          </span>
+        {{end}}
+      </div>
+    {{end}}
   </div>
 
   {{if eq (len .Items) 0}}
@@ -78,6 +107,11 @@
 
             <div class="feed-item-meta" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
               <span>📅 {{.Item.Published}}</span>
+              {{if gt .Item.Size 0}}
+                <span class="badge badge-muted" style="font-size: 11px;" title="Payload size">
+                  💾 {{formatBytes .Item.Size}}
+                </span>
+              {{end}}
               {{if .Item.SourceFeedName}}
                 <span class="badge badge-info" style="font-size: 11px;" title="{{.Item.SourceFeedURL}}">
                   🏷️ {{.Item.SourceFeedName}}

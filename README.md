@@ -13,6 +13,7 @@ Written in **Go** with embedded **HTML templates + HTMX** — compiles into a si
   * Instant search and architecture filtering (e.g. `arch`, `debian`, `x86_64`, `aarch64`).
   * Filter releases by all feeds or by a specific source feed.
   * Automatic cross-feed deduplication with top-to-bottom priority ordering (feeds listed higher in settings take priority when the same torrent exists across multiple feeds).
+  * **Automatic Size Detection & Preview**: Real-time extraction from RSS metadata, qBittorrent active sync, or async `.torrent` metainfo bencode parsing with background caching.
   * 1-click **Track Distro** to automatically create smart regex rules and queue downloads.
   * Direct `.torrent` file download buttons.
 * **Flexible View Modes (Unified vs. Dedicated Tabs)**:
@@ -90,7 +91,7 @@ PORT=7474 ../bin/foss-seeder
 ## To-Do
 
 - [x] Add multi-feed RSS support for additional FOSS distros and software sources.
-- [ ] Add size preview for ISOs.
+- [x] Add size preview for ISOs.
 - [ ] Add available space on disk to the UI.
 - [ ] Add support for additional torrent clients (e.g. Transmission, Deluge, etc.).
 - [ ] Replace Emojis with SVG icons for better cross-platform compatibility.

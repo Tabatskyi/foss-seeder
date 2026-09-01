@@ -179,3 +179,89 @@ func TestMultiFeedFetchAndDeduplication(t *testing.T) {
 		t.Errorf("expected feed 1 priority 2 count 1, got %v", infos[1])
 	}
 }
+
+func TestSizeResolutionAndCaching(t *testing.T) {
+	// Server serving bencoded .torrent file
+	torrentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bencoded := "d8:announce22:http://tracker.com/ann4:infod6:lengthi3221225472e4:name10:distro.isoee"
+		w.Header().Set("Content-Type", "application/x-bittorrent")
+		_, _ = w.Write([]byte(bencoded))
+	}))
+	defer torrentServer.Close()
+
+	// Feed server
+	feedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		xml := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Torrent Feed</title>
+    <item>
+      <title>Distro ISO 2026</title>
+      <guid>distro-2026</guid>
+      <link>` + torrentServer.URL + `/distro.torrent</link>
+      <enclosure url="` + torrentServer.URL + `/distro.torrent" type="application/x-bittorrent"/>
+    </item>
+  </channel>
+</rss>`
+		_, _ = w.Write([]byte(xml))
+	}))
+	defer feedServer.Close()
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	cfg := config.LoadConfig()
+	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{feedServer.URL}, 600, true, false)
+
+	log := logger.New(200)
+	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
+	s := New(cfg, feed.NewClient(), qClient, log)
+
+	items, err := s.GetCachedFeed(context.Background(), true)
+	if err != nil {
+		t.Fatalf("unexpected error fetching feed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+
+	// Size resolver runs in background; let's test synchronous resolve as well as cache check
+	sz, err := s.sizeResolver.Resolve(context.Background(), torrentServer.URL+"/distro.torrent")
+	if err != nil {
+		t.Fatalf("unexpected error resolving size: %v", err)
+	}
+	if sz != 3221225472 {
+		t.Errorf("expected size 3221225472, got %d", sz)
+	}
+
+	// Verify it is cached
+	cachedSz, found := s.sizeResolver.GetCached(torrentServer.URL + "/distro.torrent")
+	if !found || cachedSz != 3221225472 {
+		t.Errorf("expected cached size 3221225472, got found=%v sz=%d", found, cachedSz)
+	}
+}
+
+func TestDirectFileSizeResolution(t *testing.T) {
+	// Server serving direct archive file
+	fileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Content-Length", "17316175")
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_, _ = w.Write(make([]byte, 100))
+	}))
+	defer fileServer.Close()
+
+	resolver := feed.NewSizeResolver()
+	sz, err := resolver.Resolve(context.Background(), fileServer.URL+"/ukwiki.gz")
+	if err != nil {
+		t.Fatalf("unexpected error resolving direct file size: %v", err)
+	}
+	if sz != 17316175 {
+		t.Errorf("expected size 17316175, got %d", sz)
+	}
+}
