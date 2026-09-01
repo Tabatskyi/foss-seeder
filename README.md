@@ -8,9 +8,6 @@ Written in **Go** with embedded **HTML templates + HTMX** — compiles into a si
 
 ## 🌟 Features
 
-* **Distro & Software Selector**:
-  * Live catalog browser connected to `fosstorrents.com`.
-  * Instant search and filtering by distro name, software, or architecture (e.g. `arch`, `debian`, `x86_64`, `aarch64`).
 * **Multi-Feed RSS Aggregation & Selector**:
   * Support for multiple concurrent RSS feeds (e.g. `fosstorrents.com`, `distrowatch.com`, `academictorrents.com`, etc.).
   * Instant search and architecture filtering (e.g. `arch`, `debian`, `x86_64`, `aarch64`).
@@ -92,11 +89,6 @@ PORT=7474 ../bin/foss-seeder
 
 ## To-Do
 
-- Add more RSS feed sources for additional FOSS distros and software.
-- Add size preview for ISOs.
-- Add available space on disk to the UI.
-- Add support for additional torrent clients (e.g. Transmission, Deluge, etc.).
-- Replace Emojis with SVG icons for better cross-platform compatibility.
 - [x] Add multi-feed RSS support for additional FOSS distros and software sources.
 - [ ] Add size preview for ISOs.
 - [ ] Add available space on disk to the UI.
