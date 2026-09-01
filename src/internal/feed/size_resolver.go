@@ -47,7 +47,7 @@ func (sr *SizeResolver) SetCached(torrentURL string, size int64) {
 	sr.cache[torrentURL] = size
 }
 
-// Resolve fetches the .torrent file and parses its size, using cache if available.
+// Resolve fetches the .torrent file or direct download file and resolves its size, using cache if available.
 func (sr *SizeResolver) Resolve(ctx context.Context, torrentURL string) (int64, error) {
 	if size, found := sr.GetCached(torrentURL); found && size > 0 {
 		return size, nil
@@ -55,6 +55,23 @@ func (sr *SizeResolver) Resolve(ctx context.Context, torrentURL string) (int64, 
 
 	if !strings.HasPrefix(torrentURL, "http://") && !strings.HasPrefix(torrentURL, "https://") {
 		return 0, fmt.Errorf("invalid or non-http torrent url: %s", torrentURL)
+	}
+
+	uLower := strings.ToLower(torrentURL)
+
+	// If it's a direct download file (not a .torrent file), e.g. .gz, .iso, .img, .zip, etc., try HEAD request first
+	if !strings.HasSuffix(uLower, ".torrent") {
+		headReq, err := http.NewRequestWithContext(ctx, http.MethodHead, torrentURL, nil)
+		if err == nil {
+			headResp, err := sr.httpClient.Do(headReq)
+			if err == nil {
+				defer headResp.Body.Close()
+				if headResp.StatusCode >= 200 && headResp.StatusCode < 400 && headResp.ContentLength > 0 {
+					sr.SetCached(torrentURL, headResp.ContentLength)
+					return headResp.ContentLength, nil
+				}
+			}
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, torrentURL, nil)
@@ -72,10 +89,23 @@ func (sr *SizeResolver) Resolve(ctx context.Context, torrentURL string) (int64, 
 		return 0, fmt.Errorf("http error %d fetching %s", resp.StatusCode, torrentURL)
 	}
 
-	// Limit to 2MB to prevent downloading huge files if URL was not a .torrent
+	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+
+	// If Content-Type indicates direct non-torrent file and ContentLength is set:
+	if !strings.Contains(contentType, "bittorrent") && !strings.HasSuffix(uLower, ".torrent") && resp.ContentLength > 0 {
+		sr.SetCached(torrentURL, resp.ContentLength)
+		return resp.ContentLength, nil
+	}
+
+	// Limit to 2MB to prevent downloading huge files into memory
 	limitedReader := io.LimitReader(resp.Body, 2*1024*1024)
 	size, err := ParseTorrentSize(limitedReader)
 	if err != nil {
+		// Fallback to ContentLength if bencode parse failed and ContentLength > 0
+		if resp.ContentLength > 0 {
+			sr.SetCached(torrentURL, resp.ContentLength)
+			return resp.ContentLength, nil
+		}
 		return 0, fmt.Errorf("failed to parse torrent metadata for %s: %w", torrentURL, err)
 	}
 

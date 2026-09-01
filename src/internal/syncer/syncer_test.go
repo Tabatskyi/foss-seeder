@@ -242,3 +242,26 @@ func TestSizeResolutionAndCaching(t *testing.T) {
 		t.Errorf("expected cached size 3221225472, got found=%v sz=%d", found, cachedSz)
 	}
 }
+
+func TestDirectFileSizeResolution(t *testing.T) {
+	// Server serving direct archive file
+	fileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Content-Length", "17316175")
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_, _ = w.Write(make([]byte, 100))
+	}))
+	defer fileServer.Close()
+
+	resolver := feed.NewSizeResolver()
+	sz, err := resolver.Resolve(context.Background(), fileServer.URL+"/ukwiki.gz")
+	if err != nil {
+		t.Fatalf("unexpected error resolving direct file size: %v", err)
+	}
+	if sz != 17316175 {
+		t.Errorf("expected size 17316175, got %d", sz)
+	}
+}

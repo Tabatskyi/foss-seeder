@@ -49,6 +49,9 @@ func FeedDisplayName(feedURL string) string {
 	if strings.Contains(host, "linuxtracker") {
 		return "LinuxTracker"
 	}
+	if strings.Contains(host, "wikimedia") {
+		return "Wikimedia Dumps"
+	}
 	clean := strings.TrimPrefix(host, "www.")
 	return clean
 }
@@ -60,9 +63,11 @@ type userAgentTransport struct {
 func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 FOSSSeeder/1.0")
+		req.Header.Set("User-Agent", "qBittorrent/4.6.0 Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 	}
 	if req.Header.Get("Accept") == "" {
 		req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, text/html, */*")
+		req.Header.Set("Accept", "*/*")
 	}
 	return t.rt.RoundTrip(req)
 }
@@ -104,8 +109,15 @@ func (c *Client) Fetch(ctx context.Context, feedURL string) ([]Item, error) {
 			pubTime = *entry.UpdatedParsed
 		}
 
+		title := strings.TrimSpace(entry.Title)
+		expectedName := ExtractFilenameFromURL(torrentURL)
+		if (strings.HasPrefix(title, "http://") || strings.HasPrefix(title, "https://")) && expectedName != "" {
+			title = expectedName
+		}
+
 		item := Item{
 			Title:        strings.TrimSpace(entry.Title),
+			Title:        title,
 			TorrentURL:   torrentURL,
 			Size:         extractSize(entry),
 			Description:  strings.TrimSpace(entry.Description),
@@ -113,6 +125,7 @@ func (c *Client) Fetch(ctx context.Context, feedURL string) ([]Item, error) {
 			Published:    pubTime.Format("2006-01-02 15:04"),
 			PublishedAt:  pubTime,
 			ExpectedName: ExtractFilenameFromURL(torrentURL),
+			ExpectedName: expectedName,
 		}
 		items = append(items, item)
 	}
@@ -197,6 +210,8 @@ func parseSizeFromText(text string) int64 {
 	return int64(val * multiplier)
 }
 
+var htmlLinkRegex = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']+\.(?:torrent|iso|img|gz|xz|tar\.\w+|zip|7z|dmg|exe|pkg))["']`)
+
 func extractTorrentURL(entry *gofeed.Item) string {
 	if entry == nil {
 		return ""
@@ -226,6 +241,15 @@ func extractTorrentURL(entry *gofeed.Item) string {
 	}
 
 	// 3. Fallback to entry.Link
+	// 3. Check for direct download links in description or content
+	if match := htmlLinkRegex.FindStringSubmatch(entry.Description); len(match) > 1 {
+		return match[1]
+	}
+	if match := htmlLinkRegex.FindStringSubmatch(entry.Content); len(match) > 1 {
+		return match[1]
+	}
+
+	// 4. Fallback to entry.Link
 	if entry.Link != "" {
 		return entry.Link
 	}

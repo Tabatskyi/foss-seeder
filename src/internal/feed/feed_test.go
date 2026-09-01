@@ -134,6 +134,16 @@ func TestExtractTorrentURL(t *testing.T) {
 	if url := extractTorrentURL(item2); url != expectedAc {
 		t.Errorf("expected %s, got %s", expectedAc, url)
 	}
+
+	// 3. HTML Description link (e.g. Wikimedia dumps)
+	item3 := &gofeed.Item{
+		Link:        "http://download.wikimedia.org/ukwiki/20260801",
+		Description: `<a href="http://download.wikimedia.org/ukwiki/20260801/ukwiki-20260801-all-titles-in-ns0.gz">ukwiki-20260801-all-titles-in-ns0.gz</a>`,
+	}
+	expectedWk := "http://download.wikimedia.org/ukwiki/20260801/ukwiki-20260801-all-titles-in-ns0.gz"
+	if url := extractTorrentURL(item3); url != expectedWk {
+		t.Errorf("expected %s, got %s", expectedWk, url)
+	}
 }
 
 func TestExtractSize(t *testing.T) {
