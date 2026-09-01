@@ -81,9 +81,16 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePartialStatus(w http.ResponseWriter, r *http.Request) {
 	status := s.syncer.Status()
-	s.render(w, "status_bar.html", map[string]any{
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "status_bar.html", map[string]any{
 		"Status": status,
-	})
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = s.templates.ExecuteTemplate(&buf, "tab_badges.html", status)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
 }
 
 func (s *Server) handlePartialFeed(w http.ResponseWriter, r *http.Request) {
@@ -96,12 +103,12 @@ func (s *Server) handlePartialFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.render(w, "feed_list.html", feedData)
+	s.renderWithOOB(w, "feed_list.html", feedData)
 }
 
 func (s *Server) handlePartialRules(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
-	s.render(w, "rules_list.html", RulesData{
+	s.renderWithOOB(w, "rules_list.html", RulesData{
 		Rules: cfg.Rules,
 	})
 }
@@ -111,7 +118,7 @@ func (s *Server) handlePartialTorrents(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
 	torrents, _ := s.qbit.GetTorrents(ctx, cfg.QbitCategory)
 
-	s.render(w, "torrents_list.html", TorrentsData{
+	s.renderWithOOB(w, "torrents_list.html", TorrentsData{
 		Category: cfg.QbitCategory,
 		Torrents: torrents,
 	})
