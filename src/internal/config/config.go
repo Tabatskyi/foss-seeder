@@ -16,6 +16,7 @@ type TargetRule struct {
 	Enabled    bool   `json:"enabled"`
 	SavePath   string `json:"save_path,omitempty"`
 	AutoPurge  bool   `json:"auto_purge"`
+	FeedURL    string `json:"feed_url,omitempty"`
 }
 
 type Config struct {
@@ -24,6 +25,7 @@ type Config struct {
 	Port                 string                `json:"port"`
 	FeedURL              string                `json:"feed_url,omitempty"`
 	FeedURLs             []string              `json:"feed_urls"`
+	SeparateFeedTabs     bool                  `json:"separate_feed_tabs"`
 	QbitHost             string                `json:"qbit_host"`
 	QbitUser             string                `json:"qbit_user"`
 	QbitPass             string                `json:"qbit_pass"`
@@ -146,6 +148,7 @@ func LoadConfig() *Config {
 				cfg.CheckIntervalSeconds = diskCfg.CheckIntervalSeconds
 			}
 			cfg.SequentialDownload = diskCfg.SequentialDownload
+			cfg.SeparateFeedTabs = diskCfg.SeparateFeedTabs
 			if diskCfg.Rules != nil {
 				cfg.Rules = diskCfg.Rules
 			}
@@ -193,6 +196,7 @@ func (c *Config) Get() Config {
 		Port:                 c.Port,
 		FeedURL:              c.FeedURL,
 		FeedURLs:             feedURLsCopy,
+		SeparateFeedTabs:     c.SeparateFeedTabs,
 		QbitHost:             c.QbitHost,
 		QbitUser:             c.QbitUser,
 		QbitPass:             c.QbitPass,
@@ -205,7 +209,7 @@ func (c *Config) Get() Config {
 	}
 }
 
-func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath string, feedURLs []string, interval int, seqDl bool) error {
+func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath string, feedURLs []string, interval int, seqDl, separateFeedTabs bool) error {
 	c.mu.Lock()
 	c.QbitHost = qbitHost
 	c.QbitUser = qbitUser
@@ -231,9 +235,20 @@ func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath
 		c.CheckIntervalSeconds = interval
 	}
 	c.SequentialDownload = seqDl
+	c.SeparateFeedTabs = separateFeedTabs
 	c.mu.Unlock()
 
 	return c.Save()
+}
+
+func (c *Config) ToggleSeparateFeedTabs() (bool, error) {
+	c.mu.Lock()
+	c.SeparateFeedTabs = !c.SeparateFeedTabs
+	newState := c.SeparateFeedTabs
+	c.mu.Unlock()
+
+	err := c.Save()
+	return newState, err
 }
 
 func (c *Config) SetRule(rule TargetRule) error {

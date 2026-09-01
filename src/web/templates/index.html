@@ -47,10 +47,19 @@
 
     <!-- Tabs Navigation -->
     <nav class="nav-tabs" id="tab-nav">
-      <button class="tab-btn active" onclick="switchTab('selector-tab', this)">
-        <span>📦 Distro Selector</span>
-        <span id="tab-badge-feed" class="tab-badge">{{.Status.CachedFeedCount}}</span>
-      </button>
+      {{if .Config.SeparateFeedTabs}}
+        {{range $i, $feed := .FeedInfos}}
+          <button class="tab-btn {{if eq $i 0}}active{{end}}" onclick="switchTab('feed-tab-{{$i}}', this)">
+            <span>📦 {{$feed.Name}}</span>
+            <span id="tab-badge-feed-{{$i}}" class="tab-badge">{{$feed.Count}}</span>
+          </button>
+        {{end}}
+      {{else}}
+        <button class="tab-btn active" onclick="switchTab('selector-tab', this)">
+          <span>📦 Distro Selector</span>
+          <span id="tab-badge-feed" class="tab-badge">{{.Status.CachedFeedCount}}</span>
+        </button>
+      {{end}}
       <button class="tab-btn" onclick="switchTab('rules-tab', this)">
         <span>📋 Tracked Rules</span>
         <span id="tab-badge-rules" class="tab-badge">{{.Status.ActiveRulesCount}}</span>
@@ -63,10 +72,18 @@
       </button>
     </nav>
 
-    <!-- Tab 1: Distro Selector -->
-    <section id="selector-tab" class="tab-pane">
-      {{template "feed_list.html" .FeedData}}
-    </section>
+    <!-- Tab 1: Distro Selector or Separate Feed Tabs -->
+    {{if .Config.SeparateFeedTabs}}
+      {{range $i, $feed := .FeedInfos}}
+        <section id="feed-tab-{{$i}}" class="tab-pane" data-feed-url="{{$feed.URL}}" style="{{if ne $i 0}}display: none;{{end}}">
+          <div hx-get="/partials/feed?feed_url={{$feed.URL}}" hx-trigger="load" hx-target="this" hx-swap="innerHTML"></div>
+        </section>
+      {{end}}
+    {{else}}
+      <section id="selector-tab" class="tab-pane">
+        {{template "feed_list.html" .FeedData}}
+      </section>
+    {{end}}
 
     <!-- Tab 2: Tracked Rules -->
     <section id="rules-tab" class="tab-pane" style="display: none;">
@@ -142,10 +159,18 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">FOSS RSS Feed URLs (one per line)</label>
+            <label class="form-label">FOSS RSS Feed URLs (one per line, higher has more priority)</label>
             <textarea name="feed_urls" rows="3" required class="form-control" style="resize: vertical; font-family: inherit; font-size: 13px;">{{range $i, $url := .Config.FeedURLs}}{{if $i}}
 {{end}}{{$url}}{{else}}{{.Config.FeedURL}}{{end}}</textarea>
-            <span style="font-size: 11px; color: var(--text-muted);">Enter one RSS feed URL per line</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Enter one RSS feed URL per line. Feeds listed higher have more priority if the same torrent appears across multiple feeds.</span>
+          </div>
+
+          <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+              <input type="checkbox" name="separate_feed_tabs" value="true" {{if .Config.SeparateFeedTabs}}checked{{end}} />
+              Separate Feeds into Individual Tabs
+            </label>
+            <span style="font-size: 11px; color: var(--text-muted); margin-left: 24px;">When checked, creates dedicated tabs for each feed instead of a unified selector</span>
           </div>
 
           <div class="form-grid">

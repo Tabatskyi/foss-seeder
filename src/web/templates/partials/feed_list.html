@@ -11,23 +11,47 @@
         hx-get="/partials/feed" 
         hx-target="#feed-container" 
         hx-trigger="keyup changed delay:250ms, search"
-        hx-include="this"
+        hx-include="[name='q'], [name='feed_filter'], [name='feed_url']"
         autocomplete="off"
       />
     </div>
 
+    {{if not .SeparateFeedTabs}}
+      {{if gt (len .FeedInfos) 1}}
+        <select 
+          name="feed_filter" 
+          class="form-control" 
+          style="width: auto; font-size: 12px; height: 34px; padding: 4px 10px;"
+          hx-get="/partials/feed"
+          hx-target="#feed-container"
+          hx-trigger="change"
+          hx-include="[name='q']"
+        >
+          <option value="" {{if eq .SelectedFeed ""}}selected{{end}}>🌐 All Feeds</option>
+          {{range .FeedInfos}}
+            <option value="{{.URL}}" {{if eq $.SelectedFeed .URL}}selected{{end}}>🏷️ {{.Name}} ({{.Count}} releases)</option>
+          {{end}}
+        </select>
+      {{end}}
+    {{else}}
+      {{if .SelectedFeed}}
+        <input type="hidden" name="feed_url" value="{{.SelectedFeed}}" />
+      {{end}}
+    {{end}}
+
     <button 
       class="btn btn-sm" 
-      hx-get="/partials/feed?refresh=true" 
+      hx-get="/partials/feed?refresh=true{{if .SelectedFeed}}&feed_url={{.SelectedFeed}}{{end}}" 
       hx-target="#feed-container"
-      title="Fetch latest updates from fosstorrents.com"
+      hx-include="[name='q'], [name='feed_filter']"
+      title="Fetch latest updates from RSS feeds"
     >
       🔄 Refresh Feed
     </button>
   </div>
 
   <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
-    Showing {{len .Items}} releases from RSS feeds
+    Showing {{len .Items}} releases{{if .SelectedFeed}} from <strong>{{feedDisplayName .SelectedFeed}}</strong>{{else}} across RSS feeds{{end}}
     {{if .Query}} matching "<strong>{{.Query}}</strong>"{{end}}
   </div>
 
@@ -43,17 +67,29 @@
           <div>
             <div class="feed-item-header">
               <span class="feed-item-title">{{.Item.Title}}</span>
-              {{if .IsTracked}}
-                <span class="badge badge-success">Tracked</span>
-              {{else}}
-                <span class="badge badge-muted">Untracked</span>
-              {{end}}
+              <div style="display: flex; gap: 4px; align-items: center;">
+                {{if .IsTracked}}
+                  <span class="badge badge-success">Tracked</span>
+                {{else}}
+                  <span class="badge badge-muted">Untracked</span>
+                {{end}}
+              </div>
             </div>
 
-            <div class="feed-item-meta" style="margin-top: 8px;">
+            <div class="feed-item-meta" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
               <span>📅 {{.Item.Published}}</span>
+              {{if .Item.SourceFeedName}}
+                <span class="badge badge-info" style="font-size: 11px;" title="{{.Item.SourceFeedURL}}">
+                  🏷️ {{.Item.SourceFeedName}}
+                </span>
+                {{if .Item.HasFeedDuplicate}}
+                  <span class="badge badge-success" style="font-size: 10px;" title="Same torrent also present in other feeds; prioritized from {{.Item.SourceFeedName}}">
+                    ⚡ Prioritized
+                  </span>
+                {{end}}
+              {{end}}
               {{if .MatchingRuleKey}}
-                <span>🏷️ Rule: <code>{{.MatchingRuleKey}}</code></span>
+                <span>📋 Rule: <code>{{.MatchingRuleKey}}</code></span>
               {{end}}
             </div>
           </div>
@@ -74,15 +110,17 @@
                     {{if .RuleEnabled}}checked{{end}}
                     hx-post="/api/rules/toggle?key={{.MatchingRuleKey}}" 
                     hx-target="#feed-container"
-                    hx-include="[name='q']"
+                    hx-include="[name='q'], [name='feed_filter'], [name='feed_url']"
                   />
                   <span class="slider"></span>
                 </label>
               </div>
             {{else}}
-              <form hx-post="/api/rules/add-from-feed" hx-target="#feed-container" hx-include="[name='q']" style="margin: 0;">
+              <form hx-post="/api/rules/add-from-feed" hx-target="#feed-container" hx-include="[name='q'], [name='feed_filter']" style="margin: 0;">
                 <input type="hidden" name="title" value="{{.Item.Title}}" />
                 <input type="hidden" name="torrent_url" value="{{.Item.TorrentURL}}" />
+                <input type="hidden" name="feed_url" value="{{.Item.SourceFeedURL}}" />
+                <input type="hidden" name="selected_feed" value="{{$.SelectedFeed}}" />
                 <button type="submit" class="btn btn-primary btn-sm">
                   + Track Distro
                 </button>

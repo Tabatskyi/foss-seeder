@@ -1,3 +1,6 @@
-<span id="tab-badge-feed" hx-swap-oob="true" class="tab-badge">{{.CachedFeedCount}}</span>
-<span id="tab-badge-rules" hx-swap-oob="true" class="tab-badge">{{.ActiveRulesCount}}</span>
+<span id="tab-badge-feed" hx-swap-oob="true" class="tab-badge">{{if .Status}}{{.Status.CachedFeedCount}}{{else}}{{.CachedFeedCount}}{{end}}</span>
+<span id="tab-badge-rules" hx-swap-oob="true" class="tab-badge">{{if .Status}}{{.Status.ActiveRulesCount}}{{else}}{{.ActiveRulesCount}}{{end}}</span>
+{{range $i, $f := .FeedInfos}}
+  <span id="tab-badge-feed-{{$i}}" hx-swap-oob="true" class="tab-badge">{{$f.Count}}</span>
+{{end}}
 

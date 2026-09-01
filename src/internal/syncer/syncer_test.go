@@ -134,7 +134,7 @@ func TestMultiFeedFetchAndDeduplication(t *testing.T) {
 	t.Setenv("CONFIG_PATH", configPath)
 
 	cfg := config.LoadConfig()
-	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{ts1.URL, ts2.URL}, 600, true)
+	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{ts1.URL, ts2.URL}, 600, true, false)
 
 	log := logger.New(200)
 	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
@@ -148,5 +148,34 @@ func TestMultiFeedFetchAndDeduplication(t *testing.T) {
 	// Should aggregate Distro A, Distro B, Distro C (total 3 unique items)
 	if len(items) != 3 {
 		t.Fatalf("expected 3 aggregated items, got %d", len(items))
+	}
+
+	// First item should be Distro A from Feed 1 with priority 1
+	if items[0].FeedPriority != 1 || items[0].SourceFeedURL != ts1.URL {
+		t.Errorf("expected item 0 to have priority 1 and source feed 1, got priority %d url %s", items[0].FeedPriority, items[0].SourceFeedURL)
+	}
+
+	// Distro B should come from ts1.URL (priority 1) because ts1 was evaluated first
+	var distroB feed.Item
+	for _, it := range items {
+		if it.Title == "Distro B v1.0" {
+			distroB = it
+			break
+		}
+	}
+	if distroB.FeedPriority != 1 || distroB.SourceFeedURL != ts1.URL {
+		t.Errorf("expected Distro B to be prioritized from Feed 1, got priority %d", distroB.FeedPriority)
+	}
+
+	// Check GetFeedInfos
+	infos := syncer.GetFeedInfos(context.Background())
+	if len(infos) != 2 {
+		t.Fatalf("expected 2 feed infos, got %d", len(infos))
+	}
+	if infos[0].Priority != 1 || infos[0].Count != 2 {
+		t.Errorf("expected feed 0 priority 1 count 2, got %v", infos[0])
+	}
+	if infos[1].Priority != 2 || infos[1].Count != 1 {
+		t.Errorf("expected feed 1 priority 2 count 1, got %v", infos[1])
 	}
 }

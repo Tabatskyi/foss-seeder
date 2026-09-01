@@ -14,6 +14,13 @@ import (
 	"foss-seeder/internal/qbit"
 )
 
+type FeedInfo struct {
+	URL      string `json:"url"`
+	Name     string `json:"name"`
+	Priority int    `json:"priority"`
+	Count    int    `json:"count"`
+}
+
 type Status struct {
 	LastSyncTime     time.Time `json:"last_sync_time"`
 	NextSyncTime     time.Time `json:"next_sync_time"`
@@ -68,17 +75,23 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 	}
 
 	var allItems []feed.Item
-	seen := make(map[string]bool)
+	itemIndexMap := make(map[string]int)
 	var fetchErrors []string
 
-	for _, u := range feedURLs {
+	for priorityIdx, u := range feedURLs {
 		items, err := s.feedClient.Fetch(ctx, u)
 		if err != nil {
 			s.log.Warn("Failed to fetch RSS feed (%s): %v", u, err)
 			fetchErrors = append(fetchErrors, fmt.Sprintf("%s: %v", u, err))
 			continue
 		}
+		feedName := feed.FeedDisplayName(u)
+		feedPriority := priorityIdx + 1
 		for _, item := range items {
+			item.SourceFeedURL = u
+			item.SourceFeedName = feedName
+			item.FeedPriority = feedPriority
+
 			key := item.GUID
 			if key == "" {
 				key = item.TorrentURL
@@ -86,8 +99,13 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 			if key == "" {
 				key = item.Title
 			}
-			if !seen[key] {
-				seen[key] = true
+
+			if existingIdx, found := itemIndexMap[key]; found {
+				// The torrent is present across multiple feeds!
+				allItems[existingIdx].HasFeedDuplicate = true
+				allItems[existingIdx].OtherFeedSources = append(allItems[existingIdx].OtherFeedSources, feedName)
+			} else {
+				itemIndexMap[key] = len(allItems)
 				allItems = append(allItems, item)
 			}
 		}
@@ -103,6 +121,31 @@ func (s *Syncer) GetCachedFeed(ctx context.Context, forceRefresh bool) ([]feed.I
 	s.statusMu.Unlock()
 
 	return allItems, nil
+}
+
+func (s *Syncer) GetFeedInfos(ctx context.Context) []FeedInfo {
+	c := s.cfg.Get()
+	feedURLs := c.FeedURLs
+	if len(feedURLs) == 0 && c.FeedURL != "" {
+		feedURLs = []string{c.FeedURL}
+	}
+
+	items, _ := s.GetCachedFeed(ctx, false)
+	counts := make(map[string]int)
+	for _, it := range items {
+		counts[it.SourceFeedURL]++
+	}
+
+	infos := make([]FeedInfo, len(feedURLs))
+	for i, u := range feedURLs {
+		infos[i] = FeedInfo{
+			URL:      u,
+			Name:     feed.FeedDisplayName(u),
+			Priority: i + 1,
+			Count:    counts[u],
+		}
+	}
+	return infos
 }
 
 func (s *Syncer) CheckQbitHealth(ctx context.Context) (bool, string) {
@@ -207,6 +250,10 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 
 		var matchingItems []feed.Item
 		for _, item := range feedItems {
+			// If rule is tied to a specific feed, only match against that feed
+			if rule.FeedURL != "" && item.SourceFeedURL != "" && item.SourceFeedURL != rule.FeedURL {
+				continue
+			}
 			if pattern.MatchString(item.Title) && item.TorrentURL != "" {
 				matchingItems = append(matchingItems, item)
 			}

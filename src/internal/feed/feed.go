@@ -12,13 +12,43 @@ import (
 )
 
 type Item struct {
-	Title        string    `json:"title"`
-	TorrentURL   string    `json:"torrent_url"`
-	Description  string    `json:"description"`
-	GUID         string    `json:"guid"`
-	Published    string    `json:"published"`
-	PublishedAt  time.Time `json:"published_at"`
-	ExpectedName string    `json:"expected_name"`
+	Title            string    `json:"title"`
+	TorrentURL       string    `json:"torrent_url"`
+	Description      string    `json:"description"`
+	GUID             string    `json:"guid"`
+	Published        string    `json:"published"`
+	PublishedAt      time.Time `json:"published_at"`
+	ExpectedName     string    `json:"expected_name"`
+	SourceFeedURL    string    `json:"source_feed_url"`
+	SourceFeedName   string    `json:"source_feed_name"`
+	FeedPriority     int       `json:"feed_priority"`
+	HasFeedDuplicate bool      `json:"has_feed_duplicate"`
+	OtherFeedSources []string  `json:"other_feed_sources,omitempty"`
+}
+
+func FeedDisplayName(feedURL string) string {
+	u, err := url.Parse(feedURL)
+	if err != nil || u.Host == "" {
+		if feedURL == "" {
+			return "All Feeds"
+		}
+		return feedURL
+	}
+	host := strings.ToLower(u.Host)
+	if strings.Contains(host, "fosstorrents") {
+		return "FOSSTorrents"
+	}
+	if strings.Contains(host, "distrowatch") {
+		return "DistroWatch"
+	}
+	if strings.Contains(host, "academictorrents") {
+		return "Academic Torrents"
+	}
+	if strings.Contains(host, "linuxtracker") {
+		return "LinuxTracker"
+	}
+	clean := strings.TrimPrefix(host, "www.")
+	return clean
 }
 
 type userAgentTransport struct {

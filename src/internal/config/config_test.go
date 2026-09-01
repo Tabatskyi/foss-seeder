@@ -65,7 +65,7 @@ func TestSettingsPersistenceWithEnvVars(t *testing.T) {
 	}
 
 	// 2. User updates settings in UI and saves
-	err := cfg.UpdateSettings("http://192.168.1.100:8080", "customuser", "secretpass", "custom-cat", "/custom/storage", []string{"https://example.com/feed.xml", "https://example.com/feed2.xml"}, 3600, false)
+	err := cfg.UpdateSettings("http://192.168.1.100:8080", "customuser", "secretpass", "custom-cat", "/custom/storage", []string{"https://example.com/feed.xml", "https://example.com/feed2.xml"}, 3600, false, true)
 	if err != nil {
 		t.Fatalf("failed to update settings: %v", err)
 	}
@@ -90,6 +90,9 @@ func TestSettingsPersistenceWithEnvVars(t *testing.T) {
 	}
 	if len(restartedCfg.FeedURLs) != 2 || restartedCfg.FeedURLs[0] != "https://example.com/feed.xml" || restartedCfg.FeedURLs[1] != "https://example.com/feed2.xml" {
 		t.Errorf("expected persisted FeedURLs [https://example.com/feed.xml, https://example.com/feed2.xml], got %v", restartedCfg.FeedURLs)
+	}
+	if restartedCfg.SeparateFeedTabs != true {
+		t.Errorf("expected persisted SeparateFeedTabs true, got %v", restartedCfg.SeparateFeedTabs)
 	}
 	if restartedCfg.CheckIntervalSeconds != 3600 {
 		t.Errorf("expected persisted CheckIntervalSeconds 3600, got %d", restartedCfg.CheckIntervalSeconds)
@@ -124,8 +127,20 @@ func TestMultipleFeedURLsConfig(t *testing.T) {
 
 	// Update to multiple feeds
 	newFeeds := []string{"https://feed1.com/rss", "https://feed2.com/rss"}
-	if err := cfg.UpdateSettings(cfg.QbitHost, cfg.QbitUser, cfg.QbitPass, cfg.QbitCategory, cfg.SavePath, newFeeds, 600, true); err != nil {
+	if err := cfg.UpdateSettings(cfg.QbitHost, cfg.QbitUser, cfg.QbitPass, cfg.QbitCategory, cfg.SavePath, newFeeds, 600, true, false); err != nil {
 		t.Fatalf("failed to update multi feeds: %v", err)
+	}
+
+	// Test adding a rule tied to feed
+	feedRule := TargetRule{
+		Key:        "arch-feed-1",
+		Name:       "Arch Feed 1",
+		TitleRegex: "^Arch.*",
+		Enabled:    true,
+		FeedURL:    "https://feed1.com/rss",
+	}
+	if err := cfg.SetRule(feedRule); err != nil {
+		t.Fatalf("failed to set rule tied to feed: %v", err)
 	}
 
 	reloaded := LoadConfig()
@@ -134,5 +149,14 @@ func TestMultipleFeedURLsConfig(t *testing.T) {
 	}
 	if reloaded.FeedURL != "https://feed1.com/rss" {
 		t.Fatalf("expected FeedURL fallback to be first feed, got %s", reloaded.FeedURL)
+	}
+	if r, ok := reloaded.Rules["arch-feed-1"]; !ok || r.FeedURL != "https://feed1.com/rss" {
+		t.Fatalf("expected rule tied to feed1, got %v", r)
+	}
+
+	// Test toggle separate tabs
+	newState, err := cfg.ToggleSeparateFeedTabs()
+	if err != nil || !newState {
+		t.Fatalf("expected ToggleSeparateFeedTabs to return true, got %v, err=%v", newState, err)
 	}
 }
