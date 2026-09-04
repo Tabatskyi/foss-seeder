@@ -3,6 +3,8 @@ package web
 import (
 	"regexp"
 	"testing"
+
+	"foss-seeder/internal/config"
 )
 
 func TestCleanDisplayNameAndSlug(t *testing.T) {
@@ -85,6 +87,24 @@ func TestCleanDisplayNameAndSlug(t *testing.T) {
 				"CentOS Stream 9 (x86_64)",
 			},
 		},
+		{
+			inputTitle:   "Alpine Linux 3.23.3 - Mini Root Filesystem (x86)",
+			expectedName: "Alpine Linux - Mini Root Filesystem (x86)",
+			expectedSlug: "alpine-linux-mini-root-filesystem-x86",
+			testMatch:    "Alpine Linux 3.24.0 - Mini Root Filesystem (x86)",
+			nonMatches: []string{
+				"Alpine Linux 3.23.3 - Mini Root Filesystem (x86_64)",
+			},
+		},
+		{
+			inputTitle:   "Alpine Linux 3.23.3 - Mini Root Filesystem (x86_64)",
+			expectedName: "Alpine Linux - Mini Root Filesystem (x86_64)",
+			expectedSlug: "alpine-linux-mini-root-filesystem-x86-64",
+			testMatch:    "Alpine Linux 3.24.0 - Mini Root Filesystem (x86_64)",
+			nonMatches: []string{
+				"Alpine Linux 3.23.3 - Mini Root Filesystem (x86)",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -113,5 +133,26 @@ func TestCleanDisplayNameAndSlug(t *testing.T) {
 				t.Errorf("regex %q unexpectedly matched different variant %q", regexStr, nonMatch)
 			}
 		}
+	}
+}
+
+func TestGenerateUniqueSlug(t *testing.T) {
+	rules := map[string]config.TargetRule{
+		"alpine-linux-standard-x86-64": {
+			Key:     "alpine-linux-standard-x86-64",
+			FeedURL: "https://fosstorrents.com/feed/torrents.xml",
+		},
+	}
+
+	// Same name and same feed -> reuses slug
+	slug1 := generateUniqueSlug(rules, "Alpine Linux - Standard (x86_64)", "https://fosstorrents.com/feed/torrents.xml")
+	if slug1 != "alpine-linux-standard-x86-64" {
+		t.Errorf("expected reuse of slug, got %q", slug1)
+	}
+
+	// Same name from different feed -> disambiguates
+	slug2 := generateUniqueSlug(rules, "Alpine Linux - Standard (x86_64)", "https://distrowatch.com/news/torrents.xml")
+	if slug2 == "alpine-linux-standard-x86-64" {
+		t.Errorf("expected distinct slug for different feed, got %q", slug2)
 	}
 }

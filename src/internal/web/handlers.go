@@ -248,7 +248,8 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 	if displayName == "" {
 		displayName = title
 	}
-	slug := createSlug(displayName)
+	cfg := s.cfg.Get()
+	slug := generateUniqueSlug(cfg.Rules, displayName, feedURL)
 	regexPattern := generateSmartRegex(title)
 
 	rule := config.TargetRule{
@@ -310,7 +311,7 @@ func (s *Server) handleTrackAll(w http.ResponseWriter, r *http.Request) {
 		if displayName == "" {
 			displayName = item.Item.Title
 		}
-		slug := createSlug(displayName)
+		slug := generateUniqueSlug(cfg.Rules, displayName, item.Item.SourceFeedURL)
 		regexPattern := generateSmartRegex(item.Item.Title)
 
 		rule := config.TargetRule{
@@ -322,6 +323,7 @@ func (s *Server) handleTrackAll(w http.ResponseWriter, r *http.Request) {
 			FeedURL:    item.Item.SourceFeedURL,
 		}
 		_ = s.cfg.SetRule(rule)
+		cfg.Rules[slug] = rule
 
 		savePath := cfg.SavePath
 		_ = s.qbit.AddTorrent(ctx, item.Item.TorrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
@@ -505,8 +507,36 @@ func createSlug(s string) string {
 	clean := strings.ToLower(s)
 	reg := regexp.MustCompile(`[^a-z0-9]+`)
 	slug := strings.Trim(reg.ReplaceAllString(clean, "-"), "-")
-	if len(slug) > 36 {
-		slug = slug[:36]
+	if len(slug) > 128 {
+		slug = strings.Trim(slug[:128], "-")
+	}
+	return slug
+}
+
+func generateUniqueSlug(existingRules map[string]config.TargetRule, displayName string, feedURL string) string {
+	baseSlug := createSlug(displayName)
+	slug := baseSlug
+	if existing, exists := existingRules[slug]; exists {
+		if existing.FeedURL == feedURL {
+			return slug
+		}
+		if feedURL != "" {
+			feedSlug := createSlug(feed.FeedDisplayName(feedURL))
+			if feedSlug != "" {
+				candidate := createSlug(baseSlug + "-" + feedSlug)
+				if _, taken := existingRules[candidate]; !taken {
+					return candidate
+				}
+			}
+		}
+		counter := 2
+		for {
+			candidate := fmt.Sprintf("%s-%d", baseSlug, counter)
+			if _, taken := existingRules[candidate]; !taken {
+				return candidate
+			}
+			counter++
+		}
 	}
 	return slug
 }
