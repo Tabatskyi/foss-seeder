@@ -516,7 +516,9 @@ func cleanDisplayName(title string) string {
 	matches := parenPattern.FindAllString(name, -1)
 	if len(matches) >= 2 {
 		for i := 0; i < len(matches)-1; i++ {
-			if matches[i] == matches[i+1] {
+			innerI := strings.Trim(matches[i], "()")
+			innerNext := strings.Trim(matches[i+1], "()")
+			if matches[i] == matches[i+1] || strings.Contains(strings.ToLower(innerI), strings.ToLower(innerNext)) {
 				name = strings.Replace(name, matches[i]+" "+matches[i+1], matches[i], 1)
 				name = strings.Replace(name, matches[i]+matches[i+1], matches[i], 1)
 			}
@@ -584,12 +586,14 @@ func generateSmartRegex(title string) string {
 }
 
 var (
-	versionRegex = regexp.MustCompile(`\b\d+-\d+(?:\.\d+)*\b|\b(?:v)?\d+(?:\.\d+)+(?:-(?:rc|beta|alpha|pre|preview|patch|sp|p|\d+)\w*)?\b|\b(19|20)\d{2}(?:\.\d+)+\b|\b(19|20)\d{2}\d{2}\d{2}(?:\.\d+)?\b|\b\d{6,8}\b`)
+	versionRegex      = regexp.MustCompile(`\b\d+-\d+(?:\.\d+)*\b|\b(?:v)?\d+(?:\.\d+)+(?:-(?:rc|beta|alpha|pre|preview|patch|sp|p)\d*)?\b|\b(19|20)\d{2}(?:\.\d+)+\b|\b(19|20)\d{2}\d{2}\d{2}(?:\.\d+)?\b|\b\d{6,8}\b`)
+	archSuffixPattern = regexp.MustCompile(`(?i)[-._](?:32[-_]?bit|64[-_]?bit|x86_64|x86|amd64|arm64|aarch64|i386|i686|armhf|armv7|win32|win64).*$`)
 )
 
 func extractVersion(s string) string {
 	m := versionRegex.FindString(s)
-	return strings.TrimPrefix(m, "v")
+	v := strings.TrimPrefix(m, "v")
+	return archSuffixPattern.ReplaceAllString(v, "")
 }
 
 func (s *Server) buildRulesData(ctx context.Context, cfg *config.Config, feedInfos []syncer.FeedInfo) RulesData {
@@ -602,6 +606,7 @@ func (s *Server) buildRulesData(ctx context.Context, cfg *config.Config, feedInf
 		view := RuleItemView{
 			TargetRule: rule,
 		}
+		view.Name = cleanDisplayName(rule.Name)
 
 		pattern, err := regexp.Compile("(?i)" + rule.TitleRegex)
 		var expectedName string
@@ -645,7 +650,7 @@ func (s *Server) buildRulesData(ctx context.Context, cfg *config.Config, feedInf
 			}
 			view.TorrentName = chosenTorrent.Name
 			view.CurrentVersion = extractVersion(chosenTorrent.Name)
-			if view.CurrentVersion == "" && expectedName != "" && feed.IsTorrentMatching(chosenTorrent.Name, expectedName) {
+			if (view.CurrentVersion == "" || (expectedName != "" && feed.IsTorrentMatching(chosenTorrent.Name, expectedName))) && view.LatestVersion != "" {
 				view.CurrentVersion = view.LatestVersion
 			}
 			if view.CurrentVersion == "" {

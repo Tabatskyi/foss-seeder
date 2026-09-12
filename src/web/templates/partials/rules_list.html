@@ -92,7 +92,7 @@
                     <span class="slider"></span>
                   </label>
                 </td>
-                <td style="font-weight: 600;">
+                <td style="font-weight: 600; min-width: 180px;">
                   {{$v.Name}}
                 </td>
                 <td style="white-space: nowrap;">
@@ -123,10 +123,10 @@
                   {{end}}
                 </td>
                 <td style="white-space: nowrap;">
-                  <span class="badge badge-info">{{$v.Key}}</span>
+                  <span class="badge badge-info" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle;" title="{{$v.Key}}">{{$v.Key}}</span>
                 </td>
                 <td>
-                  <code style="font-family: var(--font-mono); font-size: 12px; color: #79c0ff;">{{$v.TitleRegex}}</code>
+                  <code style="font-family: var(--font-mono); font-size: 12px; color: #79c0ff; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle;" title="{{$v.TitleRegex}}">{{$v.TitleRegex}}</code>
                 </td>
                 <td style="white-space: nowrap;">
                   <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; white-space: nowrap;" title="Toggle auto-purge: {{if $v.AutoPurge}}Enabled (deletes previous release when newer version is downloaded). Click to keep all.{{else}}Keep all (retains older releases). Click to enable auto-purge.{{end}}">

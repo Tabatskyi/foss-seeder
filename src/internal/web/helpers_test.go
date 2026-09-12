@@ -115,6 +115,26 @@ func TestCleanDisplayNameAndSlug(t *testing.T) {
 				"Alpine Linux 3.23.3 - Mini Root Filesystem (x86)",
 			},
 		},
+		{
+			inputTitle:   "Audacity 3.7.9 - Windows (Installer - 64bit) (64bit)",
+			expectedName: "Audacity - Windows (Installer - 64bit)",
+			expectedSlug: "audacity-windows-installer-64bit",
+			testMatch:    "Audacity 3.8.0 - Windows (Installer - 64bit) (64bit)",
+			nonMatches: []string{
+				"Audacity 3.8.0 - Windows (Installer - 32bit) (32bit)",
+				"Audacity 3.8.0 - Windows (Portable - 64bit) (64bit)",
+			},
+		},
+		{
+			inputTitle:   "Audacity 3.7.9 - Windows (Installer - 32bit) (32bit)",
+			expectedName: "Audacity - Windows (Installer - 32bit)",
+			expectedSlug: "audacity-windows-installer-32bit",
+			testMatch:    "Audacity 3.8.0 - Windows (Installer - 32bit) (32bit)",
+			nonMatches: []string{
+				"Audacity 3.8.0 - Windows (Installer - 64bit) (64bit)",
+				"Audacity 3.8.0 - Windows (Portable - 32bit) (32bit)",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -223,15 +243,18 @@ func TestHandleSaveSettingsSyncMode(t *testing.T) {
 
 func TestExtractVersion(t *testing.T) {
 	cases := map[string]string{
-		"Alpine Linux 3.23.3 - Extended (x86)": "3.23.3",
-		"alpine-extended-3.23.3-x86.iso":       "3.23.3",
-		"v1.2.3":                               "1.2.3",
-		"Kali Linux 2026.2 - Installer":        "2026.2",
-		"Cachy OS 260809 - Desktop":            "260809",
-		"CentOS 10-20260820.0 (x86_64)":        "10-20260820.0",
-		"Ubuntu 24.04.1 LTS":                   "24.04.1",
-		"Debian 13.6.0 - Netinst (amd64)":      "13.6.0",
-		"NonVersionedTitle":                    "",
+		"Alpine Linux 3.23.3 - Extended (x86)":                 "3.23.3",
+		"alpine-extended-3.23.3-x86.iso":                       "3.23.3",
+		"v1.2.3":                                               "1.2.3",
+		"Kali Linux 2026.2 - Installer":                        "2026.2",
+		"Cachy OS 260809 - Desktop":                            "260809",
+		"CentOS 10-20260820.0 (x86_64)":                        "10-20260820.0",
+		"Ubuntu 24.04.1 LTS":                                   "24.04.1",
+		"Debian 13.6.0 - Netinst (amd64)":                      "13.6.0",
+		"audacity-win-3.7.9-32bit.exe":                         "3.7.9",
+		"audacity-win-3.7.9-64bit.exe":                         "3.7.9",
+		"Audacity 3.7.9 - Windows (Installer - 64bit) (64bit)": "3.7.9",
+		"NonVersionedTitle":                                    "",
 	}
 
 	for in, want := range cases {
