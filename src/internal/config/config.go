@@ -286,6 +286,22 @@ func (c *Config) ToggleRule(key string) (bool, error) {
 	return newState, err
 }
 
+func (c *Config) ToggleAutoPurge(key string) (bool, error) {
+	c.mu.Lock()
+	rule, exists := c.Rules[key]
+	if !exists {
+		c.mu.Unlock()
+		return false, os.ErrNotExist
+	}
+	rule.AutoPurge = !rule.AutoPurge
+	c.Rules[key] = rule
+	newState := rule.AutoPurge
+	c.mu.Unlock()
+
+	err := c.Save()
+	return newState, err
+}
+
 func (c *Config) DeleteRule(key string) error {
 	c.mu.Lock()
 	delete(c.Rules, key)

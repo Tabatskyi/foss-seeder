@@ -185,6 +185,24 @@ func (s *Server) handleToggleRule(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleToggleAutoPurge(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		key = r.FormValue("key")
+	}
+
+	if key != "" {
+		newState, err := s.cfg.ToggleAutoPurge(key)
+		if err == nil {
+			s.log.Info("Toggled auto-purge for rule '%s' to %v", key, newState)
+		}
+	}
+
+	cfg := s.cfg.Get()
+	feedInfos := s.syncer.GetFeedInfos(r.Context())
+	s.renderWithOOB(w, "rules_list.html", s.buildRulesData(r.Context(), cfg, feedInfos))
+}
+
 func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -566,7 +584,7 @@ func generateSmartRegex(title string) string {
 }
 
 var (
-	versionRegex = regexp.MustCompile(`\b\d+-\d+(?:\.\d+)*\b|\b(?:v)?\d+(?:\.\d+)+(?:-\w+)?\b|\b(19|20)\d{2}(?:\.\d+)+\b|\b(19|20)\d{2}\d{2}\d{2}(?:\.\d+)?\b|\b\d{6,8}\b`)
+	versionRegex = regexp.MustCompile(`\b\d+-\d+(?:\.\d+)*\b|\b(?:v)?\d+(?:\.\d+)+(?:-(?:rc|beta|alpha|pre|preview|patch|sp|p|\d+)\w*)?\b|\b(19|20)\d{2}(?:\.\d+)+\b|\b(19|20)\d{2}\d{2}\d{2}(?:\.\d+)?\b|\b\d{6,8}\b`)
 )
 
 func extractVersion(s string) string {

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -217,5 +218,122 @@ func TestHandleSaveSettingsSyncMode(t *testing.T) {
 
 	if cfg.Get().SyncMode != "immediate" {
 		t.Errorf("expected SyncMode 'immediate', got %q", cfg.Get().SyncMode)
+	}
+}
+
+func TestExtractVersion(t *testing.T) {
+	cases := map[string]string{
+		"Alpine Linux 3.23.3 - Extended (x86)": "3.23.3",
+		"alpine-extended-3.23.3-x86.iso":       "3.23.3",
+		"v1.2.3":                               "1.2.3",
+		"Kali Linux 2026.2 - Installer":        "2026.2",
+		"Cachy OS 260809 - Desktop":            "260809",
+		"CentOS 10-20260820.0 (x86_64)":        "10-20260820.0",
+		"Ubuntu 24.04.1 LTS":                   "24.04.1",
+		"Debian 13.6.0 - Netinst (amd64)":      "13.6.0",
+		"NonVersionedTitle":                    "",
+	}
+
+	for in, want := range cases {
+		got := extractVersion(in)
+		if got != want {
+			t.Errorf("extractVersion(%q) = %q; want %q", in, got, want)
+		}
+	}
+}
+
+func TestHandleToggleAutoPurge(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	cfg := config.LoadConfig()
+	_ = cfg.SetRule(config.TargetRule{
+		Key:        "test-toggle-purge",
+		Name:       "Test Toggle Purge",
+		TitleRegex: ".*",
+		AutoPurge:  true,
+		Enabled:    true,
+	})
+
+	log := logger.New(100)
+	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
+	sEngine := syncer.New(cfg, feed.NewClient(), qClient, log)
+
+	srv, err := NewServer(cfg, sEngine, qClient, log)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	// 1. Toggle from true to false
+	req := httptest.NewRequest(http.MethodPost, "/api/rules/toggle-autopurge?key=test-toggle-purge", nil)
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	if cfg.Get().Rules["test-toggle-purge"].AutoPurge != false {
+		t.Errorf("expected AutoPurge to be false after toggle")
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Keep all") {
+		t.Errorf("expected rendered HTML to contain 'Keep all'")
+	}
+
+	// 2. Toggle back from false to true
+	req2 := httptest.NewRequest(http.MethodPost, "/api/rules/toggle-autopurge?key=test-toggle-purge", nil)
+	w2 := httptest.NewRecorder()
+	srv.router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w2.Code)
+	}
+
+	if cfg.Get().Rules["test-toggle-purge"].AutoPurge != true {
+		t.Errorf("expected AutoPurge to be true after second toggle")
+	}
+
+	body2 := w2.Body.String()
+	if !strings.Contains(body2, "Enabled") {
+		t.Errorf("expected rendered HTML to contain 'Enabled'")
+	}
+}
+
+func TestBuildRulesData(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	cfg := config.LoadConfig()
+	_ = cfg.SetRule(config.TargetRule{
+		Key:        "alpine-std",
+		Name:       "Alpine Linux - Standard (x86_64)",
+		TitleRegex: `(?i)Alpine Linux .* Standard \(x86_64\)`,
+		AutoPurge:  true,
+		Enabled:    true,
+	})
+
+	log := logger.New(100)
+	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
+	sEngine := syncer.New(cfg, feed.NewClient(), qClient, log)
+
+	srv, err := NewServer(cfg, sEngine, qClient, log)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	data := srv.buildRulesData(context.Background(), cfg.Get(), nil)
+	view, ok := data.Rules["alpine-std"]
+	if !ok {
+		t.Fatalf("expected alpine-std in rules data")
+	}
+	if view.Key != "alpine-std" {
+		t.Errorf("expected Key alpine-std, got %s", view.Key)
+	}
+	if !view.AutoPurge {
+		t.Errorf("expected AutoPurge true")
 	}
 }

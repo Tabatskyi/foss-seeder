@@ -197,3 +197,53 @@ func TestSyncModeConfig(t *testing.T) {
 		t.Errorf("expected reloaded2 SyncMode 'immediate', got %q", reloaded2.SyncMode)
 	}
 }
+
+func TestToggleAutoPurge(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	cfg := LoadConfig()
+	err := cfg.SetRule(TargetRule{
+		Key:        "test-purge",
+		Name:       "Test Purge",
+		TitleRegex: ".*",
+		AutoPurge:  true,
+		Enabled:    true,
+	})
+	if err != nil {
+		t.Fatalf("failed to save rule: %v", err)
+	}
+
+	// Toggle from true to false
+	newState, err := cfg.ToggleAutoPurge("test-purge")
+	if err != nil || newState != false {
+		t.Fatalf("expected newState false, got %v, err=%v", newState, err)
+	}
+
+	if cfg.Get().Rules["test-purge"].AutoPurge != false {
+		t.Errorf("expected AutoPurge to be false in memory")
+	}
+
+	// Toggle from false to true
+	newState, err = cfg.ToggleAutoPurge("test-purge")
+	if err != nil || newState != true {
+		t.Fatalf("expected newState true, got %v, err=%v", newState, err)
+	}
+
+	if cfg.Get().Rules["test-purge"].AutoPurge != true {
+		t.Errorf("expected AutoPurge to be true in memory")
+	}
+
+	// Verify persistence on reload
+	reloaded := LoadConfig()
+	if !reloaded.Rules["test-purge"].AutoPurge {
+		t.Errorf("expected AutoPurge to be persisted as true")
+	}
+
+	// Non-existent rule returns error
+	_, err = cfg.ToggleAutoPurge("non-existent")
+	if err == nil {
+		t.Errorf("expected error for non-existent rule")
+	}
+}
