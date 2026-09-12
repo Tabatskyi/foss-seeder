@@ -46,8 +46,16 @@ type FeedData struct {
 	UntrackedCount   int
 }
 
+type RuleItemView struct {
+	config.TargetRule
+	CurrentVersion string
+	LatestVersion  string
+	TorrentName    string
+	IsActive       bool
+}
+
 type RulesData struct {
-	Rules     map[string]config.TargetRule
+	Rules     map[string]RuleItemView
 	FeedInfos []syncer.FeedInfo
 }
 

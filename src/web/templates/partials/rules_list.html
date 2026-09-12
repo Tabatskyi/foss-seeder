@@ -70,6 +70,7 @@
             <tr>
               <th>Status</th>
               <th>Display Name</th>
+              <th>Current Version</th>
               <th>Source Feed</th>
               <th>Identifier (Tag)</th>
               <th>Regex Pattern</th>
@@ -93,6 +94,24 @@
                 </td>
                 <td style="font-weight: 600;">
                   {{$v.Name}}
+                </td>
+                <td>
+                  {{if $v.CurrentVersion}}
+                    <span class="badge badge-success" title="{{if $v.TorrentName}}Active in qBittorrent: {{$v.TorrentName}}{{else}}Active release{{end}}">
+                      {{$v.CurrentVersion}}
+                    </span>
+                    {{if and $v.LatestVersion (ne $v.CurrentVersion $v.LatestVersion)}}
+                      <span class="badge badge-warning" title="New release available in feed: {{$v.LatestVersion}}" style="margin-left: 4px;">
+                        ⬆️ {{$v.LatestVersion}}
+                      </span>
+                    {{end}}
+                  {{else if $v.LatestVersion}}
+                    <span class="badge badge-info" title="Latest release in feed (not downloaded yet)">
+                      {{$v.LatestVersion}}
+                    </span>
+                  {{else}}
+                    <span class="badge badge-muted">—</span>
+                  {{end}}
                 </td>
                 <td>
                   {{if $v.FeedURL}}
