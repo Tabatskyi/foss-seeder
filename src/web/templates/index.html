@@ -166,6 +166,23 @@
           </div>
 
           <div class="form-group">
+            <label class="form-label">Update & Purge Behavior</label>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px; background: var(--bg-tertiary); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+                <input type="radio" name="sync_mode" value="immediate" {{if or (eq .Config.SyncMode "immediate") (eq .Config.SyncMode "")}}checked{{end}} />
+                <span>⚡ <strong>Immediate purge AND download</strong></span>
+              </label>
+              <span style="font-size: 11px; color: var(--text-muted); margin-left: 24px;">Queue new releases and purge obsolete versions immediately as soon as feed updates are detected.</span>
+
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; margin-top: 4px;">
+                <input type="radio" name="sync_mode" value="scheduled" {{if eq .Config.SyncMode "scheduled"}}checked{{end}} />
+                <span>⏰ <strong>Scheduled purge AND download</strong></span>
+              </label>
+              <span style="font-size: 11px; color: var(--text-muted); margin-left: 24px;">Wait for the scheduled interval cycle (or manual Sync Now) to perform downloads and purges consistently together.</span>
+            </div>
+          </div>
+
+          <div class="form-group">
             <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
               <input type="checkbox" name="separate_feed_tabs" value="true" {{if .Config.SeparateFeedTabs}}checked{{end}} />
               Separate Feeds into Individual Tabs

@@ -46,8 +46,16 @@ type FeedData struct {
 	UntrackedCount   int
 }
 
+type RuleItemView struct {
+	config.TargetRule
+	CurrentVersion string
+	LatestVersion  string
+	TorrentName    string
+	IsActive       bool
+}
+
 type RulesData struct {
-	Rules     map[string]config.TargetRule
+	Rules     map[string]RuleItemView
 	FeedInfos []syncer.FeedInfo
 }
 
@@ -128,6 +136,7 @@ func (s *Server) setupRoutes() {
 	// API & Actions
 	r.Post("/api/sync", s.handleSync)
 	r.Post("/api/rules/toggle", s.handleToggleRule)
+	r.Post("/api/rules/toggle-autopurge", s.handleToggleAutoPurge)
 	r.Post("/api/rules/add", s.handleAddRule)
 	r.Post("/api/rules/add-from-feed", s.handleAddRuleFromFeed)
 	r.Post("/api/rules/delete", s.handleDeleteRule)

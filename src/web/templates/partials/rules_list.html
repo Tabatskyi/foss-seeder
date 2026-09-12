@@ -70,6 +70,7 @@
             <tr>
               <th>Status</th>
               <th>Display Name</th>
+              <th>Current Version</th>
               <th>Source Feed</th>
               <th>Identifier (Tag)</th>
               <th>Regex Pattern</th>
@@ -94,7 +95,25 @@
                 <td style="font-weight: 600;">
                   {{$v.Name}}
                 </td>
-                <td>
+                <td style="white-space: nowrap;">
+                  {{if $v.CurrentVersion}}
+                    <span class="badge badge-success" title="{{if $v.TorrentName}}Active in qBittorrent: {{$v.TorrentName}}{{else}}Active release{{end}}">
+                      {{$v.CurrentVersion}}
+                    </span>
+                    {{if and $v.LatestVersion (ne $v.CurrentVersion $v.LatestVersion)}}
+                      <span class="badge badge-warning" title="New release available in feed: {{$v.LatestVersion}}" style="margin-left: 4px;">
+                        ⬆️ {{$v.LatestVersion}}
+                      </span>
+                    {{end}}
+                  {{else if $v.LatestVersion}}
+                    <span class="badge badge-info" title="Latest release in feed (not downloaded yet)">
+                      {{$v.LatestVersion}}
+                    </span>
+                  {{else}}
+                    <span class="badge badge-muted">—</span>
+                  {{end}}
+                </td>
+                <td style="white-space: nowrap;">
                   {{if $v.FeedURL}}
                     <span class="badge badge-info" title="{{$v.FeedURL}}">
                       🏷️ {{feedDisplayName $v.FeedURL}}
@@ -103,20 +122,29 @@
                     <span class="badge badge-muted" title="Matches across all configured RSS feeds">🌐 All Feeds</span>
                   {{end}}
                 </td>
-                <td>
+                <td style="white-space: nowrap;">
                   <span class="badge badge-info">{{$v.Key}}</span>
                 </td>
                 <td>
                   <code style="font-family: var(--font-mono); font-size: 12px; color: #79c0ff;">{{$v.TitleRegex}}</code>
                 </td>
-                <td>
-                  {{if $v.AutoPurge}}
-                    <span class="badge badge-success" title="Deletes previous ISO version when a newer one is added">Enabled</span>
-                  {{else}}
-                    <span class="badge badge-muted">Keep all</span>
-                  {{end}}
+                <td style="white-space: nowrap;">
+                  <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; white-space: nowrap;" title="Toggle auto-purge: {{if $v.AutoPurge}}Enabled (deletes previous release when newer version is downloaded). Click to keep all.{{else}}Keep all (retains older releases). Click to enable auto-purge.{{end}}">
+                    <span class="switch">
+                      <input 
+                        type="checkbox" 
+                        {{if $v.AutoPurge}}checked{{end}}
+                        hx-post="/api/rules/toggle-autopurge?key={{$v.Key}}" 
+                        hx-target="#rules-container"
+                      />
+                      <span class="slider"></span>
+                    </span>
+                    <span class="badge {{if $v.AutoPurge}}badge-success{{else}}badge-muted{{end}}" style="user-select: none; white-space: nowrap;">
+                      {{if $v.AutoPurge}}Enabled{{else}}Keep all{{end}}
+                    </span>
+                  </label>
                 </td>
-                <td style="text-align: right;">
+                <td style="text-align: right; white-space: nowrap;">
                   <button 
                     class="btn btn-sm btn-danger" 
                     hx-post="/api/rules/delete?key={{$v.Key}}" 
@@ -124,7 +152,7 @@
                     hx-confirm="Are you sure you want to remove rule '{{$v.Name}}'?"
                     title="Delete rule"
                   >
-                    🗑️ Remove
+                    Remove
                   </button>
                 </td>
               </tr>

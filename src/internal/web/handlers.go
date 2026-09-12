@@ -13,6 +13,8 @@ import (
 
 	"foss-seeder/internal/config"
 	"foss-seeder/internal/feed"
+	"foss-seeder/internal/qbit"
+	"foss-seeder/internal/syncer"
 )
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
@@ -73,10 +75,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Status:    status,
 		FeedInfos: feedInfos,
 		FeedData:  feedData,
-		RulesData: RulesData{
-			Rules:     cfg.Rules,
-			FeedInfos: feedInfos,
-		},
+		RulesData: s.buildRulesData(ctx, cfg, feedInfos),
 		TorrentsData: TorrentsData{
 			Category: cfg.QbitCategory,
 			Torrents: torrents,
@@ -120,16 +119,17 @@ func (s *Server) handlePartialFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if refresh && s.cfg.Get().SyncMode != "scheduled" {
+		s.syncer.SyncIfImmediate(r.Context())
+	}
+
 	s.renderWithOOB(w, "feed_list.html", feedData)
 }
 
 func (s *Server) handlePartialRules(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
 	feedInfos := s.syncer.GetFeedInfos(r.Context())
-	s.renderWithOOB(w, "rules_list.html", RulesData{
-		Rules:     cfg.Rules,
-		FeedInfos: feedInfos,
-	})
+	s.renderWithOOB(w, "rules_list.html", s.buildRulesData(r.Context(), cfg, feedInfos))
 }
 
 func (s *Server) handlePartialTorrents(w http.ResponseWriter, r *http.Request) {
@@ -181,8 +181,26 @@ func (s *Server) handleToggleRule(w http.ResponseWriter, r *http.Request) {
 	} else {
 		cfg := s.cfg.Get()
 		feedInfos := s.syncer.GetFeedInfos(r.Context())
-		s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules, FeedInfos: feedInfos})
+		s.renderWithOOB(w, "rules_list.html", s.buildRulesData(r.Context(), cfg, feedInfos))
 	}
+}
+
+func (s *Server) handleToggleAutoPurge(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		key = r.FormValue("key")
+	}
+
+	if key != "" {
+		newState, err := s.cfg.ToggleAutoPurge(key)
+		if err == nil {
+			s.log.Info("Toggled auto-purge for rule '%s' to %v", key, newState)
+		}
+	}
+
+	cfg := s.cfg.Get()
+	feedInfos := s.syncer.GetFeedInfos(r.Context())
+	s.renderWithOOB(w, "rules_list.html", s.buildRulesData(r.Context(), cfg, feedInfos))
 }
 
 func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +246,7 @@ func (s *Server) handleAddRule(w http.ResponseWriter, r *http.Request) {
 
 	cfg := s.cfg.Get()
 	feedInfos := s.syncer.GetFeedInfos(r.Context())
-	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules, FeedInfos: feedInfos})
+	s.renderWithOOB(w, "rules_list.html", s.buildRulesData(r.Context(), cfg, feedInfos))
 }
 
 func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
@@ -269,10 +287,14 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	torrentURL := strings.TrimSpace(r.FormValue("torrent_url"))
-	if torrentURL != "" {
-		cfg := s.cfg.Get()
-		savePath := cfg.SavePath
-		_ = s.qbit.AddTorrent(r.Context(), torrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+	if cfg.SyncMode != "scheduled" {
+		if torrentURL != "" {
+			savePath := cfg.SavePath
+			_ = s.qbit.AddTorrent(r.Context(), torrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+		}
+		if rule.AutoPurge {
+			s.syncer.SyncIfImmediate(r.Context())
+		}
 	}
 
 	query := r.FormValue("q")
@@ -325,13 +347,19 @@ func (s *Server) handleTrackAll(w http.ResponseWriter, r *http.Request) {
 		_ = s.cfg.SetRule(rule)
 		cfg.Rules[slug] = rule
 
-		savePath := cfg.SavePath
-		_ = s.qbit.AddTorrent(ctx, item.Item.TorrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
-		addedCount++
+		if cfg.SyncMode != "scheduled" {
+			savePath := cfg.SavePath
+			_ = s.qbit.AddTorrent(ctx, item.Item.TorrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+			addedCount++
+		}
 	}
 
 	if addedCount > 0 {
 		s.log.Success("Auto-created rules and queued %d releases in qBittorrent", addedCount)
+	}
+
+	if cfg.SyncMode != "scheduled" {
+		s.syncer.SyncIfImmediate(ctx)
 	}
 
 	updatedFeedData, _ := s.buildFeedData(ctx, query, selectedFeed, false)
@@ -351,7 +379,7 @@ func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 
 	cfg := s.cfg.Get()
 	feedInfos := s.syncer.GetFeedInfos(r.Context())
-	s.renderWithOOB(w, "rules_list.html", RulesData{Rules: cfg.Rules, FeedInfos: feedInfos})
+	s.renderWithOOB(w, "rules_list.html", s.buildRulesData(r.Context(), cfg, feedInfos))
 }
 
 func (s *Server) handleDeleteTorrent(w http.ResponseWriter, r *http.Request) {
@@ -411,8 +439,12 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	interval, _ := strconv.Atoi(r.FormValue("check_interval"))
 	seqDl := r.FormValue("sequential_download") == "true"
 	separateFeedTabs := r.FormValue("separate_feed_tabs") == "true"
+	syncMode := strings.ToLower(strings.TrimSpace(r.FormValue("sync_mode")))
+	if syncMode != "scheduled" {
+		syncMode = "immediate"
+	}
 
-	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURLs, interval, seqDl, separateFeedTabs)
+	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURLs, interval, seqDl, separateFeedTabs, syncMode)
 	if err != nil {
 		s.log.Error("Failed to save settings: %v", err)
 	} else {
@@ -549,4 +581,83 @@ func generateSmartRegex(title string) string {
 	escaped := regexp.QuoteMeta(title)
 	smart := smartVerPattern.ReplaceAllString(escaped, `\d+(?:[.\-_]\w+)*`)
 	return "^" + smart + "$"
+}
+
+var (
+	versionRegex = regexp.MustCompile(`\b\d+-\d+(?:\.\d+)*\b|\b(?:v)?\d+(?:\.\d+)+(?:-(?:rc|beta|alpha|pre|preview|patch|sp|p|\d+)\w*)?\b|\b(19|20)\d{2}(?:\.\d+)+\b|\b(19|20)\d{2}\d{2}\d{2}(?:\.\d+)?\b|\b\d{6,8}\b`)
+)
+
+func extractVersion(s string) string {
+	m := versionRegex.FindString(s)
+	return strings.TrimPrefix(m, "v")
+}
+
+func (s *Server) buildRulesData(ctx context.Context, cfg *config.Config, feedInfos []syncer.FeedInfo) RulesData {
+	feedItems, _ := s.syncer.GetCachedFeed(ctx, false)
+	activeTorrents, _ := s.qbit.GetTorrents(ctx, cfg.QbitCategory)
+
+	ruleViews := make(map[string]RuleItemView, len(cfg.Rules))
+
+	for key, rule := range cfg.Rules {
+		view := RuleItemView{
+			TargetRule: rule,
+		}
+
+		pattern, err := regexp.Compile("(?i)" + rule.TitleRegex)
+		var expectedName string
+
+		if err == nil {
+			for _, item := range feedItems {
+				if rule.FeedURL != "" && item.SourceFeedURL != "" && item.SourceFeedURL != rule.FeedURL {
+					continue
+				}
+				if pattern.MatchString(item.Title) && item.TorrentURL != "" {
+					view.LatestVersion = extractVersion(item.Title)
+					expectedName = item.ExpectedName
+					if expectedName == "" {
+						expectedName = feed.ExtractFilenameFromURL(item.TorrentURL)
+					}
+					if view.LatestVersion == "" && expectedName != "" {
+						view.LatestVersion = extractVersion(expectedName)
+					}
+					break
+				}
+			}
+		}
+
+		var matchingTorrents []qbit.Torrent
+		for _, t := range activeTorrents {
+			if expectedName != "" && feed.IsSameFamily(t.Name, expectedName) {
+				matchingTorrents = append(matchingTorrents, t)
+			} else if pattern != nil && pattern.MatchString(t.Name) {
+				matchingTorrents = append(matchingTorrents, t)
+			}
+		}
+
+		if len(matchingTorrents) > 0 {
+			view.IsActive = true
+			chosenTorrent := matchingTorrents[0]
+			for _, t := range matchingTorrents {
+				if expectedName != "" && feed.IsTorrentMatching(t.Name, expectedName) {
+					chosenTorrent = t
+					break
+				}
+			}
+			view.TorrentName = chosenTorrent.Name
+			view.CurrentVersion = extractVersion(chosenTorrent.Name)
+			if view.CurrentVersion == "" && expectedName != "" && feed.IsTorrentMatching(chosenTorrent.Name, expectedName) {
+				view.CurrentVersion = view.LatestVersion
+			}
+			if view.CurrentVersion == "" {
+				view.CurrentVersion = feed.CleanStem(chosenTorrent.Name)
+			}
+		}
+
+		ruleViews[key] = view
+	}
+
+	return RulesData{
+		Rules:     ruleViews,
+		FeedInfos: feedInfos,
+	}
 }

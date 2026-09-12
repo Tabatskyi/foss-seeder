@@ -350,6 +350,7 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 			savePath = rule.SavePath
 		}
 
+		newTorrentAdded := false
 		if alreadyPresent {
 			s.log.Info("[%s] Up to date: %s", key, latestItem.Title)
 		} else {
@@ -359,17 +360,24 @@ func (s *Syncer) RunSync(ctx context.Context) error {
 				s.log.Error("[%s] Failed to add torrent: %v", key, err)
 			} else {
 				s.log.Success("[%s] Successfully queued in qBittorrent", key)
+				newTorrentAdded = true
 			}
 		}
 
 		if rule.AutoPurge {
-			for _, oldT := range familyTorrents {
-				if !feed.IsTorrentMatching(oldT.Name, expectedName) {
-					s.log.Warn("[%s] Purging obsolete version: %s (hash: %s)", key, oldT.Name, oldT.Hash[:8])
-					if err := s.qbitClient.DeleteTorrent(ctx, oldT.Hash, true); err != nil {
-						s.log.Error("[%s] Error purging torrent %s: %v", key, oldT.Name, err)
-					} else {
-						s.log.Success("[%s] Purged obsolete version: %s", key, oldT.Name)
+			// Safety guarantee: only purge obsolete versions if the new release is already present
+			// OR was successfully added to qBittorrent. If adding the new torrent failed, never purge!
+			if !alreadyPresent && !newTorrentAdded {
+				s.log.Warn("[%s] Skipping auto-purge because new release failed to queue in qBittorrent", key)
+			} else {
+				for _, oldT := range familyTorrents {
+					if !feed.IsTorrentMatching(oldT.Name, expectedName) {
+						s.log.Warn("[%s] Purging obsolete version: %s (hash: %s)", key, oldT.Name, oldT.Hash[:8])
+						if err := s.qbitClient.DeleteTorrent(ctx, oldT.Hash, true); err != nil {
+							s.log.Error("[%s] Error purging torrent %s: %v", key, oldT.Name, err)
+						} else {
+							s.log.Success("[%s] Purged obsolete version: %s", key, oldT.Name)
+						}
 					}
 				}
 			}
@@ -387,6 +395,7 @@ func (s *Syncer) Start(ctx context.Context) {
 		_ = s.RunSync(ctx)
 	}()
 
+	// Scheduled interval loop
 	go func() {
 		for {
 			c := s.cfg.Get()
@@ -403,6 +412,34 @@ func (s *Syncer) Start(ctx context.Context) {
 			}
 		}
 	}()
+
+	// Immediate mode background watcher: polls feed periodically (every 15m)
+	// and triggers immediate purge & download if updates are detected for tracked rules
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(15 * time.Minute):
+				c := s.cfg.Get()
+				if c.SyncMode != "scheduled" {
+					_ = s.RunSync(ctx)
+				}
+			}
+		}
+	}()
+}
+
+// SyncIfImmediate executes a sync in the background if the configuration is set to immediate mode.
+func (s *Syncer) SyncIfImmediate(ctx context.Context) {
+	c := s.cfg.Get()
+	if c.SyncMode != "scheduled" {
+		go func() {
+			syncCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			_ = s.RunSync(syncCtx)
+		}()
+	}
 }
 
 func (s *Syncer) Status() Status {

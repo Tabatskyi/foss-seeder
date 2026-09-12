@@ -62,6 +62,7 @@ Open your browser at:
 | `SAVE_PATH` | `/downloads/foss` | Default download directory on disk |
 | `CHECK_INTERVAL_SECONDS` | `43200` | Check interval in seconds (default: 12 hours) |
 | `SEQUENTIAL_DOWNLOAD` | `true` | Enable sequential download and first/last piece priority |
+| `SYNC_MODE` | `immediate` | Purge and download timing mode (`immediate` or `scheduled`) |
 | `CONFIG_PATH` | `data/config.json` | Persistent configuration & rules storage path |
 
 ---
