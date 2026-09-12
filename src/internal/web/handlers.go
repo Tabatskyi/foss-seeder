@@ -120,6 +120,10 @@ func (s *Server) handlePartialFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if refresh && s.cfg.Get().SyncMode != "scheduled" {
+		s.syncer.SyncIfImmediate(r.Context())
+	}
+
 	s.renderWithOOB(w, "feed_list.html", feedData)
 }
 
@@ -269,10 +273,14 @@ func (s *Server) handleAddRuleFromFeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	torrentURL := strings.TrimSpace(r.FormValue("torrent_url"))
-	if torrentURL != "" {
-		cfg := s.cfg.Get()
-		savePath := cfg.SavePath
-		_ = s.qbit.AddTorrent(r.Context(), torrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+	if cfg.SyncMode != "scheduled" {
+		if torrentURL != "" {
+			savePath := cfg.SavePath
+			_ = s.qbit.AddTorrent(r.Context(), torrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+		}
+		if rule.AutoPurge {
+			s.syncer.SyncIfImmediate(r.Context())
+		}
 	}
 
 	query := r.FormValue("q")
@@ -325,13 +333,19 @@ func (s *Server) handleTrackAll(w http.ResponseWriter, r *http.Request) {
 		_ = s.cfg.SetRule(rule)
 		cfg.Rules[slug] = rule
 
-		savePath := cfg.SavePath
-		_ = s.qbit.AddTorrent(ctx, item.Item.TorrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
-		addedCount++
+		if cfg.SyncMode != "scheduled" {
+			savePath := cfg.SavePath
+			_ = s.qbit.AddTorrent(ctx, item.Item.TorrentURL, cfg.QbitCategory, savePath, nil, cfg.SequentialDownload)
+			addedCount++
+		}
 	}
 
 	if addedCount > 0 {
 		s.log.Success("Auto-created rules and queued %d releases in qBittorrent", addedCount)
+	}
+
+	if cfg.SyncMode != "scheduled" {
+		s.syncer.SyncIfImmediate(ctx)
 	}
 
 	updatedFeedData, _ := s.buildFeedData(ctx, query, selectedFeed, false)
@@ -411,8 +425,12 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	interval, _ := strconv.Atoi(r.FormValue("check_interval"))
 	seqDl := r.FormValue("sequential_download") == "true"
 	separateFeedTabs := r.FormValue("separate_feed_tabs") == "true"
+	syncMode := strings.ToLower(strings.TrimSpace(r.FormValue("sync_mode")))
+	if syncMode != "scheduled" {
+		syncMode = "immediate"
+	}
 
-	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURLs, interval, seqDl, separateFeedTabs)
+	err := s.cfg.UpdateSettings(qbitHost, qbitUser, qbitPass, qbitCategory, savePath, feedURLs, interval, seqDl, separateFeedTabs, syncMode)
 	if err != nil {
 		s.log.Error("Failed to save settings: %v", err)
 	} else {

@@ -33,6 +33,7 @@ type Config struct {
 	SavePath             string                `json:"save_path"`
 	CheckIntervalSeconds int                   `json:"check_interval_seconds"`
 	SequentialDownload   bool                  `json:"sequential_download"`
+	SyncMode             string                `json:"sync_mode"`
 	Rules                map[string]TargetRule `json:"rules"`
 	ConfigFilePath       string                `json:"-"`
 }
@@ -107,6 +108,7 @@ func LoadConfig() *Config {
 		SavePath:             getEnv("SAVE_PATH", "/downloads/foss"),
 		CheckIntervalSeconds: getEnvInt("CHECK_INTERVAL_SECONDS", 43200),
 		SequentialDownload:   getEnvBool("SEQUENTIAL_DOWNLOAD", true),
+		SyncMode:             getEnv("SYNC_MODE", "immediate"),
 		Rules:                make(map[string]TargetRule),
 		ConfigFilePath:       configPath,
 	}
@@ -149,6 +151,9 @@ func LoadConfig() *Config {
 			}
 			cfg.SequentialDownload = diskCfg.SequentialDownload
 			cfg.SeparateFeedTabs = diskCfg.SeparateFeedTabs
+			if diskCfg.SyncMode != "" {
+				cfg.SyncMode = diskCfg.SyncMode
+			}
 			if diskCfg.Rules != nil {
 				cfg.Rules = diskCfg.Rules
 			}
@@ -204,12 +209,13 @@ func (c *Config) Get() *Config {
 		SavePath:             c.SavePath,
 		CheckIntervalSeconds: c.CheckIntervalSeconds,
 		SequentialDownload:   c.SequentialDownload,
+		SyncMode:             c.SyncMode,
 		Rules:                rulesCopy,
 		ConfigFilePath:       c.ConfigFilePath,
 	}
 }
 
-func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath string, feedURLs []string, interval int, seqDl, separateFeedTabs bool) error {
+func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath string, feedURLs []string, interval int, seqDl, separateFeedTabs bool, syncMode string) error {
 	c.mu.Lock()
 	c.QbitHost = qbitHost
 	c.QbitUser = qbitUser
@@ -236,6 +242,11 @@ func (c *Config) UpdateSettings(qbitHost, qbitUser, qbitPass, category, savePath
 	}
 	c.SequentialDownload = seqDl
 	c.SeparateFeedTabs = separateFeedTabs
+	if syncMode == "scheduled" {
+		c.SyncMode = "scheduled"
+	} else {
+		c.SyncMode = "immediate"
+	}
 	c.mu.Unlock()
 
 	return c.Save()

@@ -1,10 +1,19 @@
 package web
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"foss-seeder/internal/config"
+	"foss-seeder/internal/feed"
+	"foss-seeder/internal/logger"
+	"foss-seeder/internal/qbit"
+	"foss-seeder/internal/syncer"
 )
 
 func TestCleanDisplayNameAndSlug(t *testing.T) {
@@ -154,5 +163,59 @@ func TestGenerateUniqueSlug(t *testing.T) {
 	slug2 := generateUniqueSlug(rules, "Alpine Linux - Standard (x86_64)", "https://distrowatch.com/news/torrents.xml")
 	if slug2 == "alpine-linux-standard-x86-64" {
 		t.Errorf("expected distinct slug for different feed, got %q", slug2)
+	}
+}
+
+func TestHandleSaveSettingsSyncMode(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	cfg := config.LoadConfig()
+	log := logger.New(100)
+	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
+	sEngine := syncer.New(cfg, feed.NewClient(), qClient, log)
+
+	srv, err := NewServer(cfg, sEngine, qClient, log)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	// 1. Post settings with sync_mode=scheduled
+	formData := url.Values{}
+	formData.Set("qbit_host", "http://localhost:8080")
+	formData.Set("qbit_user", "admin")
+	formData.Set("qbit_category", "foss")
+	formData.Set("save_path", "/downloads")
+	formData.Set("feed_urls", "https://example.com/rss.xml")
+	formData.Set("check_interval", "3600")
+	formData.Set("sync_mode", "scheduled")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	srv.router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	if cfg.Get().SyncMode != "scheduled" {
+		t.Errorf("expected SyncMode 'scheduled', got %q", cfg.Get().SyncMode)
+	}
+
+	// 2. Post settings with sync_mode=immediate
+	formData.Set("sync_mode", "immediate")
+	req2 := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(formData.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w2 := httptest.NewRecorder()
+
+	srv.router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w2.Code)
+	}
+
+	if cfg.Get().SyncMode != "immediate" {
+		t.Errorf("expected SyncMode 'immediate', got %q", cfg.Get().SyncMode)
 	}
 }

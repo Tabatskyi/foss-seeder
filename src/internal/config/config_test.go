@@ -65,7 +65,7 @@ func TestSettingsPersistenceWithEnvVars(t *testing.T) {
 	}
 
 	// 2. User updates settings in UI and saves
-	err := cfg.UpdateSettings("http://192.168.1.100:8080", "customuser", "secretpass", "custom-cat", "/custom/storage", []string{"https://example.com/feed.xml", "https://example.com/feed2.xml"}, 3600, false, true)
+	err := cfg.UpdateSettings("http://192.168.1.100:8080", "customuser", "secretpass", "custom-cat", "/custom/storage", []string{"https://example.com/feed.xml", "https://example.com/feed2.xml"}, 3600, false, true, "scheduled")
 	if err != nil {
 		t.Fatalf("failed to update settings: %v", err)
 	}
@@ -100,6 +100,9 @@ func TestSettingsPersistenceWithEnvVars(t *testing.T) {
 	if restartedCfg.SequentialDownload != false {
 		t.Errorf("expected persisted SequentialDownload false, got %v", restartedCfg.SequentialDownload)
 	}
+	if restartedCfg.SyncMode != "scheduled" {
+		t.Errorf("expected persisted SyncMode scheduled, got %s", restartedCfg.SyncMode)
+	}
 }
 
 func TestMultipleFeedURLsConfig(t *testing.T) {
@@ -127,7 +130,7 @@ func TestMultipleFeedURLsConfig(t *testing.T) {
 
 	// Update to multiple feeds
 	newFeeds := []string{"https://feed1.com/rss", "https://feed2.com/rss"}
-	if err := cfg.UpdateSettings(cfg.QbitHost, cfg.QbitUser, cfg.QbitPass, cfg.QbitCategory, cfg.SavePath, newFeeds, 600, true, false); err != nil {
+	if err := cfg.UpdateSettings(cfg.QbitHost, cfg.QbitUser, cfg.QbitPass, cfg.QbitCategory, cfg.SavePath, newFeeds, 600, true, false, "immediate"); err != nil {
 		t.Fatalf("failed to update multi feeds: %v", err)
 	}
 
@@ -158,5 +161,39 @@ func TestMultipleFeedURLsConfig(t *testing.T) {
 	newState, err := cfg.ToggleSeparateFeedTabs()
 	if err != nil || !newState {
 		t.Fatalf("expected ToggleSeparateFeedTabs to return true, got %v, err=%v", newState, err)
+	}
+}
+
+func TestSyncModeConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	// Default should be "immediate"
+	cfg := LoadConfig()
+	if cfg.SyncMode != "immediate" {
+		t.Errorf("expected default SyncMode to be 'immediate', got %q", cfg.SyncMode)
+	}
+
+	// Switch to scheduled
+	err := cfg.UpdateSettings(cfg.QbitHost, cfg.QbitUser, cfg.QbitPass, cfg.QbitCategory, cfg.SavePath, cfg.FeedURLs, 600, true, false, "scheduled")
+	if err != nil {
+		t.Fatalf("failed to update settings: %v", err)
+	}
+
+	reloaded := LoadConfig()
+	if reloaded.SyncMode != "scheduled" {
+		t.Errorf("expected reloaded SyncMode 'scheduled', got %q", reloaded.SyncMode)
+	}
+
+	// Switch back to immediate
+	err = cfg.UpdateSettings(cfg.QbitHost, cfg.QbitUser, cfg.QbitPass, cfg.QbitCategory, cfg.SavePath, cfg.FeedURLs, 600, true, false, "immediate")
+	if err != nil {
+		t.Fatalf("failed to update settings: %v", err)
+	}
+
+	reloaded2 := LoadConfig()
+	if reloaded2.SyncMode != "immediate" {
+		t.Errorf("expected reloaded2 SyncMode 'immediate', got %q", reloaded2.SyncMode)
 	}
 }

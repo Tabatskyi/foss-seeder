@@ -134,7 +134,7 @@ func TestMultiFeedFetchAndDeduplication(t *testing.T) {
 	t.Setenv("CONFIG_PATH", configPath)
 
 	cfg := config.LoadConfig()
-	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{ts1.URL, ts2.URL}, 600, true, false)
+	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{ts1.URL, ts2.URL}, 600, true, false, "immediate")
 
 	log := logger.New(200)
 	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
@@ -213,7 +213,7 @@ func TestSizeResolutionAndCaching(t *testing.T) {
 	t.Setenv("CONFIG_PATH", configPath)
 
 	cfg := config.LoadConfig()
-	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{feedServer.URL}, 600, true, false)
+	_ = cfg.UpdateSettings("http://localhost:8080", "admin", "admin", "foss", "/tmp", []string{feedServer.URL}, 600, true, false, "immediate")
 
 	log := logger.New(200)
 	qClient, _ := qbit.NewClient("http://localhost:8080", "admin", "admin")
@@ -263,5 +263,52 @@ func TestDirectFileSizeResolution(t *testing.T) {
 	}
 	if sz != 17316175 {
 		t.Errorf("expected size 17316175, got %d", sz)
+	}
+}
+
+func TestAutoPurgeSafety(t *testing.T) {
+	// Verify that if a new torrent is not present and adding it fails, old version is not purged
+	feedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		xml := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <item>
+      <title>Alpine Linux 3.24.0 - Standard (x86_64)</title>
+      <guid>alpine-3.24.0</guid>
+      <enclosure url="http://invalid.url/alpine-3.24.0.torrent" type="application/x-bittorrent"/>
+    </item>
+  </channel>
+</rss>`
+		_, _ = w.Write([]byte(xml))
+	}))
+	defer feedServer.Close()
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	t.Setenv("CONFIG_PATH", configPath)
+
+	cfg := config.LoadConfig()
+	_ = cfg.UpdateSettings("http://localhost:9999", "admin", "admin", "foss", "/tmp", []string{feedServer.URL}, 600, true, false, "immediate")
+
+	rule := config.TargetRule{
+		Key:        "alpine-standard",
+		Name:       "Alpine Standard",
+		TitleRegex: `^Alpine Linux .* Standard \(x86_64\)$`,
+		Enabled:    true,
+		AutoPurge:  true,
+	}
+	_ = cfg.SetRule(rule)
+
+	log := logger.New(200)
+	// Pointing to invalid qbit client host so login/add fails
+	qClient, _ := qbit.NewClient("http://127.0.0.1:54321", "admin", "admin")
+	s := New(cfg, feed.NewClient(), qClient, log)
+
+	err := s.RunSync(context.Background())
+	// Should fail because qBittorrent is unreachable, preventing any purge
+	if err == nil {
+		t.Errorf("expected RunSync to fail when qBittorrent is unreachable")
 	}
 }
